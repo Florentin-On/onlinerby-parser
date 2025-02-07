@@ -240,24 +240,46 @@ class ScrolledPanel(scrolled.ScrolledPanel):
     def _show_product_scroll(self):
         up_sizer = wx.BoxSizer(wx.VERTICAL)
         stored_parameters = self.panel_parameters
+        select_all_button = wx.Button(self, label='Выбрать все', name='select_all')
+        up_sizer.Add(select_all_button, flag=wx.ALIGN_CENTER | wx.UP, border=5)
+        select_all_button.Bind(wx.EVT_BUTTON, self._select_all_parameters)
         for key, value in self.parameters.items():
             self.current_product_panel_parameters[key] = {}
             up_sizer_parameter_label = wx.StaticText(self, label=key)
             up_sizer_parameter_label.SetFont(create_font(default_font))
             up_sizer.Add(up_sizer_parameter_label, flag=wx.ALIGN_CENTER | wx.UP, border=5)
+            bool_ver_sizer = wx.BoxSizer(wx.VERTICAL)
             for parameter_id in value:
-                up_sizer_line = wx.BoxSizer(wx.HORIZONTAL)
+                bool_hor_sizer = wx.BoxSizer(wx.HORIZONTAL)
                 parameter_checkbox = wx.CheckBox(self, -1, name=parameter_id)
+                parameter_name = wx.StaticText(self, label=parameter_id)
+                bool_hor_sizer.Add(parameter_checkbox, flag=wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+                bool_hor_sizer.AddSpacer(10)
+                bool_hor_sizer.AddStretchSpacer()
+                bool_hor_sizer.Add(parameter_name, flag=wx.ALIGN_CENTER)
+                bool_hor_sizer.AddStretchSpacer()
+                bool_ver_sizer.Add(bool_hor_sizer, flag=wx.EXPAND | wx.ALL, border=5)
                 self.current_product_panel_parameters[key][parameter_id] = parameter_checkbox
                 if key in stored_parameters.keys():
                     if parameter_id in stored_parameters[key].keys():
                         parameter_checkbox.SetValue(stored_parameters[key][parameter_id])
-                parameter_name = wx.StaticText(self, label=parameter_id)
-                up_sizer_line.Add(parameter_checkbox, flag=wx.ALL | wx.ALIGN_CENTER, border=5)
-                up_sizer_line.Add(parameter_name, flag=wx.ALL | wx.ALIGN_CENTER, border=5)
-                up_sizer.Add(up_sizer_line, flag=wx.ALIGN_CENTER)
+
+            up_sizer.Add(bool_ver_sizer, flag=wx.ALIGN_CENTER_HORIZONTAL | wx.ALL, border=3)
         self.SetSizer(up_sizer)
         self.SetupScrolling()
+
+    def _select_all_parameters(self, event):
+        button_current_status = event.GetEventObject().GetLabel()
+        if button_current_status == 'Выбрать все':
+            event.GetEventObject().SetLabel('Убрать все')
+            for element in self.GetChildren():
+                if isinstance(element, wx.CheckBox):
+                    element.SetValue(True)
+        else:
+            event.GetEventObject().SetLabel('Выбрать все')
+            for element in self.GetChildren():
+                if isinstance(element, wx.CheckBox):
+                    element.SetValue(False)
 
 
 class DialogWithGauge(wx.Dialog):

@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-
-
 import io
 import json
 import os
 import time
 import traceback
+from threading import Thread
 
 import openpyxl
 import requests
@@ -240,38 +239,19 @@ class Multiparse(object):
                                                            .format('0', str(total_product_count - goods_amount)),
                                                            maximum=total_product_count - goods_amount,
                                                            parent=self.ui.parent,
-                                                           style=wx.PD_APP_MODAL | wx.PD_ELAPSED_TIME | wx.PD_ESTIMATED_TIME |
-                                                                 wx.PD_REMAINING_TIME | wx.PD_AUTO_HIDE | wx.PD_SMOOTH |
-                                                                 wx.PD_CAN_ABORT)
-                status = self.process_report(pathname, link, url_get_dict, pages_count, selected_parameters, wb,
-                                             progress_window, main_parameters=main_parameters)
-                if status:
-                    dialog('Завершено', 'Выгрузка успешно завершена!', wx.OK)
-                    os.startfile(pathname)
-                else:
-                    if progress_window:
-                        progress_window.Destroy()
-                        progress_window = None
-                    dialog('Прервано', 'Выгрузка прервана пользователем', wx.ICON_WARNING)
-            except PermissionError as err:
-                wait = None
-                if progress_window:
-                    progress_window.Destroy()
-                    progress_window = None
-                msg = 'Ошибка создания отчета - указанный файл был открыт во время выгрузки:\n' + str(err) + '\n\n' + \
-                      'Подробности в логах программы.'
-                traceback.print_exc()
-                dialog(caption='Ошибка', message=msg, style=wx.ICON_ERROR)
+                                                           style=wx.PD_APP_MODAL | wx.PD_ELAPSED_TIME |
+                                                                 wx.PD_REMAINING_TIME | wx.PD_ESTIMATED_TIME |
+                                                                 wx.PD_AUTO_HIDE | wx.PD_SMOOTH | wx.PD_CAN_ABORT)
+
+                Thread(target=self.process_report, args=(pathname, link, url_get_dict, pages_count,
+                                                         selected_parameters, wb,
+                                                         progress_window),
+                       kwargs={'main_parameters': main_parameters}).start()
             except Exception as err:
-                wait = None
-                if progress_window:
-                    progress_window.Destroy()
-                    progress_window = None
                 msg = 'Ошибка создания отчета:\n' + str(err) + '\n\n' + 'Подробности в логах программы.'
                 traceback.print_exc()
                 dialog(caption='Ошибка', message=msg, style=wx.ICON_ERROR)
-            if wait is not None:
-                wait = None
+            wait = None
 
     def get_link_for_report(self):
         link = self.categories[self.ui.highest_categories_combobox.GetValue()][self.ui.categories_combobox.GetValue()][
@@ -377,7 +357,7 @@ class Multiparse(object):
                 self.product_parameters[link][group_headings[-1]] = headings
 
     def get_selected_product_parameters(self, product_link, selected_parameters):
-        b = requests.get(product_link).text
+        b = safe_get_requester(product_link, raw_response=True).content
         soup = BeautifulSoup(b, 'lxml')
         specs_table = soup.find("table", class_="product-specs__table")
         specs_table_groups = specs_table.findAll('tbody')
@@ -464,7 +444,7 @@ class Multiparse(object):
         wb.close()
 
     def process_report(self, pathname, link, url_get_dict, pages_count, selected_parameters, wb: Workbook,
-                       progress_window, main_parameters=False):
+                       progress_window: wx.GenericProgressDialog, main_parameters=False):
         goods_amount = wb['DEV_ONLINER_PARSER']['A1'].value
         start_index = 1
         if goods_amount != 0:
@@ -473,6 +453,7 @@ class Multiparse(object):
         progress_window_bar = 0
         delta_iterate_value = 2
         for i in range(start_index, pages_count + 1):
+            break_flag = False
             if i != 1:
                 proceeded_link = link
                 time.sleep(sleep)
@@ -495,11 +476,11 @@ class Multiparse(object):
                                     image_file = io.BytesIO(r.content)
                                     img = Image(image_file)
                                     img.anchor = ws.cell(column=1, row=goods_amount + delta_iterate_value).coordinate
-                                    ws.add_image(img)
-                                    img_width = img.width / 7.0 + 1
+                                    img_width = (img.width - 5) / 7.0
                                     if img_width > ws.column_dimensions['A'].width:
                                         ws.column_dimensions['A'].width = img_width
-                                    ws.row_dimensions[goods_amount + delta_iterate_value].height = img.height
+                                    ws.row_dimensions[goods_amount + delta_iterate_value].height = img.height / 1.33
+                                    ws.add_image(img)
                             else:
                                 ws.cell(column=id, row=goods_amount + delta_iterate_value, value='-')
                         if main_header == 'Бренд':
@@ -522,10 +503,8 @@ class Multiparse(object):
                                     value=product['prices']['offers']['count'] if product['prices'] else '-')
                         id += 1
                 id += 1
-                if main_parameters:
-                    if self.main_product_parameters['Картинка']:
-                        time.sleep(sleep)
-                else:
+                time.sleep(sleep)
+                if not main_parameters:
                     selected_product_parameters = self.get_selected_product_parameters(product_html,
                                                                                        selected_parameters)
                     need_row_to_increase = 0
@@ -565,12 +544,29 @@ class Multiparse(object):
                     delta_iterate_value += need_row_to_increase
                 goods_amount += 1
                 wb['DEV_ONLINER_PARSER']['A1'].value = goods_amount
-                wb.save(pathname)
                 progress_window_bar += 1
-                if not progress_window.Update(progress_window_bar,
-                                              newmsg='Прогресс\nВыгружено {} из {}'
-                                                      .format(progress_window_bar, str(progress_window.GetRange()),
-                                                              product['full_name']))[0]:
-                    progress_window.Destroy()
-                    return 0
-        return 1
+                if (progress_window.WasCancelled() or
+                        not progress_window.Update(progress_window_bar,
+                                                   newmsg='Прогресс\nВыгружено {} из {}. Выгружаю продукт: {}'.format(
+                                                       progress_window_bar, str(progress_window.GetRange()),
+                                                       product['full_name']))[0]):
+                    break_flag = True
+                    break
+            if break_flag:
+                break
+
+        caption, message, icon = 'Завершено', 'Выгрузка успешно завершена!', wx.OK
+        try:
+            wb.save(pathname)
+            if progress_window.WasCancelled():
+                caption, message, icon = 'Прервано', 'Выгрузка прервана пользователем', wx.ICON_WARNING
+        except PermissionError as err:
+            msg = 'Ошибка создания отчета - указанный файл был открыт во время выгрузки:\n' + str(
+                err) + '\n\nПодробности в логах программы.'
+            traceback.print_exc()
+            caption, message, icon = 'Ошибка', msg, wx.ICON_ERROR
+        dialog(caption, message, icon)
+        progress_window.Destroy()
+        if os.path.isfile(pathname):
+            os.startfile(pathname)
+        return None
