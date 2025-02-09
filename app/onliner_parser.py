@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-__author__ = 'p_ivanov'
-__version__ = '1.0.0'
-
 import logging
 import sys
 

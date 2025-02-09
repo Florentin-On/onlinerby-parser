@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Main file for program starting.
 All panels are initiating here.
@@ -20,9 +19,6 @@ from app.common_ui.dialogs import confirmation_dialog
 from app.multiparse.multiparse import Multiparse
 from app.multiparse.multiparse_ui import MultiparsePanel
 from app.source.welcome_screen import WelcomePanel
-
-__author__ = 'p_ivanov'
-__version__ = '1.0.0'
 
 
 class OnlinerParserApp(wx.Frame):

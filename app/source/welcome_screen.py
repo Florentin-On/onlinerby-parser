@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
 from app.common.constants import heading_font, create_font
 import wx
-
-__version__ = '1.0.0'
 
 
 class WelcomePanel(wx.Panel):

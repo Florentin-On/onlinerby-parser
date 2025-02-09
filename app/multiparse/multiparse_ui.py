@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from app.common.constants import heading_font, create_font
 import wx
 

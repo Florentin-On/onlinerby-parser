@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import wx
 import pyperclip
 from app.common.cache import ui_cache
