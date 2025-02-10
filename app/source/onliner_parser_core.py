@@ -27,26 +27,19 @@ class OnlinerParserApp(wx.Frame):
 
         result = wx.YES
         while result == wx.YES:
-            try:
-                safe_get_requester('https://google.com/', raw_response=True)
-                result = 'continiue'
-            except requests.exceptions.ConnectionError:
+            result = safe_get_requester('https://google.com/', raw_response=True)
+            if result is None:
                 result = confirmation_dialog('Ошибка подключения к интернету',
-                                             'Невозможно установить соединение с Интернетом. Полный текст ошибки доступен в логах приложения.'
-                                             '\nПопробовать установить соединение снова? В случае отказа приложение будет закрыто')
-                traceback.print_exc()
-            except Exception:
-                result = confirmation_dialog('Ошибка подключения к интернету',
-                                             'Невозможно установить соединение с Интернетом. Полный текст ошибки доступен в логах приложения.'
-                                             '\nПопробовать установить соединение снова? В случае отказа приложение будет закрыто')
-                traceback.print_exc()
-        if result != 'continiue':
+                                             'Невозможно установить соединение с Интернетом. Полный '
+                                             'текст ошибки доступен в логах приложения.\nПопробовать установить '
+                                             'соединение снова? В случае отказа приложение будет закрыто')
+        if result == wx.NO:
             self.on_close_on_start()
             return
         # ----------------------------------------------------------------------------------------------------------
         # Make your changes according to the steps below
         # ------------------
-        # STEP 1 - add your panel to the panels_list and dependencies if panel depends on other panel
+        # STEP 1 - Add your panel to the panels_list
         # ------------------
         self.panels_list = [
             'Welcome screen',
@@ -59,36 +52,32 @@ class OnlinerParserApp(wx.Frame):
                 'controller': None,
                 'is_initialized': False,
                 'is_shown': False,
-                'dependencies': [],
             }
             for panel in self.panels_list
         }
         # ------------------
         # STEP 2 - Set up your menu section here
         # ------------------
-        # Setting up the menu for account section
         help_menu = wx.Menu()
         welcome_screen_point = help_menu.Append(wx.ID_ANY, 'Приветственный экран')
         multiparse_point = help_menu.Append(wx.ID_ANY, 'Обработать каталог Onliner')
         about_point = help_menu.Append(wx.ID_ANY, 'Об авторе')
 
-        # ------------------
-        # STEP 3 - add your menu section here (if you make a new one)
-        # ------------------
-        # Creating the menu_bar.
         menu_bar = wx.MenuBar()
         menu_bar.Append(help_menu, 'Меню')
 
+        # Add the MenuBar to the Frame content
+        self.SetMenuBar(menu_bar)
+
         # ------------------
-        # STEP 4 - Add your binds here
+        # STEP 3 - Add your binds here for Menu sections
         # ------------------
         self.Bind(wx.EVT_MENU, partial(self.switch, 'Welcome screen'), welcome_screen_point)
         self.Bind(wx.EVT_MENU, partial(self.switch, 'Parse Onliner Catalogue'), multiparse_point)
-
         self.Bind(wx.EVT_MENU, self.on_about, about_point)
 
         # ------------------
-        # STEP 5
+        # STEP 4
         # ------------------
         # add your panel to the "init_panel" method below
         # ------------------
@@ -115,9 +104,6 @@ class OnlinerParserApp(wx.Frame):
         # when noLog is destroyed the old log sink is restored
         del no_log
         self.SetIcon(icon)
-
-        # Add the MenuBar to the Frame content
-        self.SetMenuBar(menu_bar)
 
         # set main sizer
         self.sizer = wx.BoxSizer(wx.VERTICAL)
@@ -188,7 +174,7 @@ class OnlinerParserApp(wx.Frame):
     def init_panel(self, panel_for_init, event):
         if panel_for_init == 'Welcome screen':
             logging.info('Initialising "{}"'.format(panel_for_init))
-            panel = WelcomePanel(parent=self, size=MAIN_SIZE, core=self)
+            panel = WelcomePanel(parent=self, size=MAIN_SIZE)
 
             self.panels[panel_for_init].update(
                 {

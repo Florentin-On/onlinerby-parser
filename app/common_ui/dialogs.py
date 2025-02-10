@@ -68,19 +68,13 @@ def confirmation_with_cancel_dialog(caption, message, style=wx.YES_NO | wx.CANCE
 def confirmation_dialog(caption, message, style=wx.YES_NO | wx.ICON_EXCLAMATION):
     """
     Confirmation dialog
-    By default with YES/NO buttons. User forsed to make selection
+    By default with YES/NO buttons. User forced to make selection
     :param caption: str: caption of dialog
     :param message: str: message of dialog
     :param style: long: wx styles
     :return: bool: True if Yes pushed; False if No pushed
     """
-    dlg = wx.MessageBox(message=message, caption=caption, style=style)
-
-    if dlg == wx.YES:
-        return wx.YES
-
-    if dlg == wx.NO:
-        return wx.NO
+    return wx.MessageBox(message=message, caption=caption, style=style)
 
 
 def select_file(message, style=wx.FD_DEFAULT_STYLE | wx.FD_FILE_MUST_EXIST):

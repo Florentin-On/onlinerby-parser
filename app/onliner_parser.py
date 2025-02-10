@@ -15,7 +15,6 @@ def run():
     import os
     logging.debug(f'Running program from: {os.getcwd()}')
 
-    # start app
     import wx
     from app.source.onliner_parser_core import OnlinerParserApp
     app = wx.App(False)

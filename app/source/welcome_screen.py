@@ -3,9 +3,8 @@ import wx
 
 
 class WelcomePanel(wx.Panel):
-    def __init__(self, parent, size, core):
+    def __init__(self, parent, size):
         wx.Panel.__init__(self, parent, size=size)
-        self.core = core
         self.SetFont(create_font(heading_font))
         main_sizer = wx.BoxSizer(orient=wx.VERTICAL)
 

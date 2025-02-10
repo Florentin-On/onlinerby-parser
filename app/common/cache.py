@@ -144,7 +144,7 @@ class UiCache(object):
     """
 
     def __init__(self):
-        self.cache_path = self._get_cache_path()
+        self.cache_path = os.path.join(APPDATA_PATH, 'ui_cache.pickle')
 
     def load_from_ui_cache(self, section, controller):
         """
@@ -204,7 +204,9 @@ class UiCache(object):
             return
 
     def save_ui_cache(self, cache):
-
+        if not os.path.isdir(APPDATA_PATH):
+            logging.warning('Cache folder not found. Creating OnlinerParser folder for cache file.')
+            os.makedirs(APPDATA_PATH)
         with open(self.cache_path, 'wb') as handle:
             pickle.dump(cache, handle)
 
@@ -226,12 +228,6 @@ class UiCache(object):
 
         app_cache.update_cache(key='ui_cache', value=saved_cache)
         return saved_cache
-
-    @staticmethod
-    def _get_cache_path():
-        appdata_path = os.getenv('APPDATA')
-        file_path = os.path.join(appdata_path, 'OnlinerParser', 'ui_cache.pickle')
-        return file_path
 
     def _check_cache_file(self):
         data_file = Path(self.cache_path)

@@ -1,16 +1,3 @@
-"""
-Collecting logs from module 'logging'.
-Use available options for your logging:
-    logging.debug('Your text for logging')
-    logging.info('Your text for logging')
-    logging.warning('Your text for logging')
-    logging.error('Your text for logging')
-    logging.critical('Your text for logging')
-
-Detailed information about logging levels: https://docs.python.org/2/howto/logging.html
-
-Also, catching missed exceptions from stderr and writing to log file and log window
-"""
 import logging
 import os
 import sys
