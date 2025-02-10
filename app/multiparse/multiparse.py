@@ -15,15 +15,15 @@ from openpyxl.styles import PatternFill
 
 from app.common.constants import get_panel_parameters, heading_excel_style, \
     heading_simple_excel_style, text_excel_style, link_excel_style, bool_true_excel_style, bool_false_excel_style, \
-    get_main_parameters
+    get_main_parameters, heading_font, create_font
 from app.common.safe_requesters import safe_get_requester
 from app.common_ui.dialogs import dialog, confirmation_dialog, confirmation_with_cancel_dialog
-from app.multiparse.multiparse_dialogs import TemplateMultiparseDialog, DialogWithGauge
+from app.multiparse.multiparse_dialogs import TemplateMultiparseDialog
 
 
-class Multiparse(object):
-    def __init__(self, ui):
-        self.ui = ui
+class Multiparse(wx.Panel):
+    def __init__(self, parent, size):
+        wx.Panel.__init__(self, parent=parent, size=size)
         self.filterNotSaved = False
         self.productNotSaved = False
         self.categories = self.load_categories()
@@ -32,112 +32,188 @@ class Multiparse(object):
         self.product_parameters = {}
         self.main_product_parameters = get_main_parameters()
         self.panel_product_parameters = {}
-        self.bla = 0
-        self.update_categories(self.ui.highest_categories_combobox, None, None, None)
 
-        self.ui.highest_categories_combobox.Bind(wx.EVT_TEXT, self.categories_changes)
-        self.ui.categories_combobox.Bind(wx.EVT_TEXT, self.categories_changes)
-        self.ui.sub_categories_combobox.Bind(wx.EVT_TEXT, self.categories_changes)
+        self.SetFont(create_font(heading_font))
+        main_sizer = wx.BoxSizer(orient=wx.HORIZONTAL)
+        left_sizer = wx.BoxSizer(orient=wx.VERTICAL)
+        self.highest_categories_label = wx.StaticText(self, label='Раздел')
+        self.product_category_combobox = wx.ComboBox(self, -1, name='product_category_combobox')
+        left_sizer_line_1 = wx.BoxSizer(orient=wx.VERTICAL)
+        left_sizer_line_1_1 = wx.BoxSizer(orient=wx.VERTICAL)
+        left_sizer_line_1.Add(self.highest_categories_label, flag=wx.LEFT | wx.ALIGN_CENTER,
+                              border=10)
+        left_sizer_line_1_1.Add(self.product_category_combobox, flag=wx.ALL | wx.EXPAND,
+                                border=5)
 
-        self.ui.select_search_general_params_button.Bind(wx.EVT_BUTTON, self.open_search_params)
-        self.ui.select_search_add_params_button.Bind(wx.EVT_BUTTON, self.open_search_params)
-        self.ui.select_needed_params_button.Bind(wx.EVT_BUTTON, self.open_search_params)
-        self.ui.generate_report_button.Bind(wx.EVT_BUTTON, self.generate_report)
-        self.ui.dev_button.Bind(wx.EVT_BUTTON, self.dev)
+        left_sizer_line_2 = wx.BoxSizer(orient=wx.VERTICAL)
+        left_sizer_line_2_1 = wx.BoxSizer(orient=wx.VERTICAL)
+        self.categories_label = wx.StaticText(self, label='Категория')
+        self.product_group_combobox = wx.ComboBox(self, -1, name='product_group_combobox')
+        left_sizer_line_2.Add(self.categories_label, flag=wx.ALIGN_CENTER | wx.UP, border=10)
+        left_sizer_line_2_1.Add(self.product_group_combobox, flag=wx.ALL | wx.EXPAND,
+                                border=5)
 
-    def dev(self, event):
-        progress = DialogWithGauge('lol', 'yep', 150, self)
-        progress.Center()
-        progress.ShowModal()
-        progress.Destroy()
+        left_sizer_line_3 = wx.BoxSizer(orient=wx.VERTICAL)
+        left_sizer_line_3_1 = wx.BoxSizer(orient=wx.VERTICAL)
+        self.sub_categories_label = wx.StaticText(self, label='Податегория')
+        self.product_section_combobox = wx.ComboBox(self, -1, name='product_section_combobox')
+        left_sizer_line_3.Add(self.sub_categories_label, flag=wx.ALIGN_CENTER | wx.UP, border=10)
+        left_sizer_line_3_1.Add(self.product_section_combobox, flag=wx.ALL | wx.EXPAND,
+                                border=5)
 
-    def load_categories(self):
-        category_dict = {}
+        left_sizer_line_4 = wx.BoxSizer(orient=wx.VERTICAL)
+        self.select_search_general_params_button = wx.Button(self, label='Задать основные параметры фильтра',
+                                                             name='general')
+        self.select_search_general_params_button.Disable()
+        left_sizer_line_4.Add(self.select_search_general_params_button, flag=wx.ALL | wx.ALIGN_CENTER, border=10)
+
+        left_sizer_line_5 = wx.BoxSizer(orient=wx.VERTICAL)
+        self.select_search_add_params_button = wx.Button(self, label='Задать дополнительные параметры фильтра',
+                                                         name='additional')
+        self.select_search_add_params_button.Disable()
+        left_sizer_line_5.Add(self.select_search_add_params_button,
+                              flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_CENTER, border=10)
+
+        left_sizer_line_6 = wx.BoxSizer(orient=wx.VERTICAL)
+        self.select_needed_params_button = wx.Button(self, label='Выбрать параметры для формирования отчета',
+                                                     name='select_needed_params_button')
+        self.select_needed_params_button.Disable()
+        left_sizer_line_6.Add(self.select_needed_params_button,
+                              flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_CENTER, border=10)
+
+        left_sizer_line_7 = wx.BoxSizer(orient=wx.VERTICAL)
+        self.generate_report_button = wx.Button(self, label='Сформировать отчет с заданными параметрами',
+                                                name='generate_report_button')
+        self.generate_report_button.Disable()
+        left_sizer_line_7.Add(self.generate_report_button,
+                              flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_CENTER, border=10)
+
+        left_sizer.Add((0, 0), proportion=1, flag=wx.ALL | wx.EXPAND, border=5)
+        left_sizer.Add(left_sizer_line_1, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_1_1, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_2, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_2_1, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_3, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_3_1, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_4, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_5, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_6, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add(left_sizer_line_7, proportion=1, flag=wx.ALL | wx.EXPAND, border=0)
+        left_sizer.Add((0, 0), proportion=1, flag=wx.ALL | wx.EXPAND, border=5)
+
+        main_sizer.Add(left_sizer, proportion=1, flag=wx.LEFT | wx.RIGHT | wx.EXPAND, border=100)
+        self.SetSizer(main_sizer)
+
+        self.update_categories(self.product_category_combobox)
+
+        self.product_category_combobox.Bind(wx.EVT_TEXT, self.categories_changes)
+        self.product_group_combobox.Bind(wx.EVT_TEXT, self.categories_changes)
+        self.product_section_combobox.Bind(wx.EVT_TEXT, self.categories_changes)
+
+        self.select_search_general_params_button.Bind(wx.EVT_BUTTON, self.open_search_params)
+        self.select_search_add_params_button.Bind(wx.EVT_BUTTON, self.open_search_params)
+        self.select_needed_params_button.Bind(wx.EVT_BUTTON, self.open_search_params)
+        self.generate_report_button.Bind(wx.EVT_BUTTON, self.generate_report)
+
+    @staticmethod
+    def load_categories() -> dict:
+        """
+        Загрузка всех категорий из каталога Онлайнера и формирование трехуровневого словаря вида
+        Категория -> Группа -> Раздел
+        """
+        category_dict: dict = {}
         categories_info = safe_get_requester('https://catalog.api.onliner.by/navigation/elements', [])
         for category in categories_info:
             category_title = category.get('title')
             if category_title and category_title not in category_dict and category.get('slug').lower() != 'prime':
-                category_dict[category_title] = {}
+                category_dict[category_title]: dict = {}
                 category_groups_info = safe_get_requester(category.get('groups_url', ''), [])
                 for group in category_groups_info:
                     group_title = group.get('title')
                     if group_title and group_title not in category_dict[category_title]:
-                        category_dict[category_title][group_title] = {}
+                        category_dict[category_title][group_title]: dict = {}
                         group_sections_info = group.get('links', [])
                         for section in group_sections_info:
                             section_title = section.get('title')
                             if section_title and section_title not in category_dict[category_title][group_title]:
-                                category_dict[category_title][group_title][section_title] = section.get(
+                                category_dict[category_title][group_title][section_title]: dict = section.get(
                                     'source_urls', {})
         return category_dict
 
-    def update_categories(self, change_category, event_key, event_value, higher_event_value):
+    def update_categories(self, product_combobox: wx.ComboBox) -> None:
+        """
+        Обновление ComboBox в зависимости от того, кто вызвал данный метод
+        :param product_combobox: wx.ComboBox, вызывающий метод
+        """
         categories_keys = []
-        if event_key is None:
+        combobox_name = product_combobox.GetName()
+        if combobox_name == 'product_category_combobox':
             categories_keys += list(self.categories.keys())
-        if event_key == 'highest_categories_combobox':
-            categories_keys += list(self.categories[event_value].keys())
-        if event_key == 'categories_combobox':
-            categories_keys += list(self.categories[higher_event_value][event_value].keys())
-        change_category.Append(categories_keys)
+        if combobox_name == 'product_group_combobox':
+            categories_keys += list(self.categories[self.product_category_combobox.GetValue()].keys())
+        if combobox_name == 'product_section_combobox':
+            categories_keys += list(self.categories[self.product_category_combobox.GetValue()][
+                                        self.product_group_combobox.GetValue()].keys())
+        product_combobox.Append(categories_keys)
 
-    def get_all_panel_parameters(self, category, category_url):
-        section_facets_data = safe_get_requester(category_url, [])
-        self.categories_parameters[category] = (category_url, section_facets_data)
-
-    def categories_changes(self, event):
-        value = event.GetEventObject().GetValue()
-        if value == '':
-            return
+    def categories_changes(self, event: wx.Event) -> None:
+        """
+        Метод смены выбора категории товаров. При выборе Раздела - подгружает информацию по его параметрам
+        :param event: wx.Event
+        """
+        combobox_value = event.GetEventObject().GetValue()
+        if combobox_value == '':  # Этот же метод вызывается при вызове Clear() у wx.ComboBox
+            return None
         key = event.GetEventObject().GetName()
 
-        if key == 'highest_categories_combobox':
-            self.ui.categories_combobox.Clear()
-            self.ui.sub_categories_combobox.Clear()
+        if key == 'product_category_combobox':
+            self.product_group_combobox.Clear()
+            self.product_section_combobox.Clear()
 
-            self.ui.sub_categories_combobox.SetValue('')
-            self.update_categories(self.ui.categories_combobox, key, value, None)
-        elif key == 'categories_combobox':
-            self.ui.sub_categories_combobox.Clear()
+            self.update_categories(self.product_group_combobox)
+        elif key == 'product_group_combobox':
+            self.product_section_combobox.Clear()
 
-            self.ui.sub_categories_combobox.SetValue('')
-            self.update_categories(self.ui.sub_categories_combobox, key, value,
-                                   self.ui.highest_categories_combobox.GetValue())
-        elif key == 'sub_categories_combobox':
-            category = self.ui.highest_categories_combobox.GetValue()
-            group = self.ui.categories_combobox.GetValue()
-            section_url = self.categories[category][group][value]
+            self.update_categories(self.product_section_combobox)
+        elif key == 'product_section_combobox':
+            category = self.product_category_combobox.GetValue()
+            group = self.product_group_combobox.GetValue()
+            section_url = self.categories[category][group][combobox_value]
             if category not in self.categories_parameters.keys():
-                self.get_all_panel_parameters(value, section_url['catalog.schema.facets'])
+                self.get_all_panel_parameters(combobox_value, section_url['catalog.schema.facets'])
 
-            button_disabled = not (self.ui.select_search_general_params_button.IsEnabled() and
-                                   self.ui.select_search_add_params_button.IsEnabled() and
-                                   self.ui.select_needed_params_button.IsEnabled() and
-                                   self.ui.generate_report_button.IsEnabled())
+            button_disabled = not (self.select_search_general_params_button.IsEnabled() and
+                                   self.select_search_add_params_button.IsEnabled() and
+                                   self.select_needed_params_button.IsEnabled() and
+                                   self.generate_report_button.IsEnabled())
             if button_disabled:
-                self.ui.select_search_general_params_button.Enable()
-                self.ui.select_search_add_params_button.Enable()
-                self.ui.select_needed_params_button.Enable()
-                self.ui.generate_report_button.Enable()
+                self.select_search_general_params_button.Enable()
+                self.select_search_add_params_button.Enable()
+                self.select_needed_params_button.Enable()
+                self.generate_report_button.Enable()
 
-        button_enabled = self.ui.select_search_general_params_button.IsEnabled() or \
-                         self.ui.select_search_add_params_button.IsEnabled() or \
-                         self.ui.select_needed_params_button.IsEnabled() or \
-                         self.ui.generate_report_button.IsEnabled()
-        if self.ui.sub_categories_combobox.GetValue() == '' and button_enabled:
-            self.ui.select_search_general_params_button.Disable()
-            self.ui.select_search_add_params_button.Disable()
-            self.ui.select_needed_params_button.Disable()
-            self.ui.generate_report_button.Disable()
+        button_enabled = self.select_search_general_params_button.IsEnabled() or \
+                         self.select_search_add_params_button.IsEnabled() or \
+                         self.select_needed_params_button.IsEnabled() or \
+                         self.generate_report_button.IsEnabled()
+        if self.product_section_combobox.GetValue() == '' and button_enabled:
+            self.select_search_general_params_button.Disable()
+            self.select_search_add_params_button.Disable()
+            self.select_needed_params_button.Disable()
+            self.generate_report_button.Disable()
         if self.productNotSaved:
             self.panel_parameters = get_panel_parameters()
             self.panel_product_parameters = {}
         self.productNotSaved = False
 
+    def get_all_panel_parameters(self, category: str, category_url: str):
+        section_facets_data = safe_get_requester(category_url, [])
+        self.categories_parameters[category] = (category_url, section_facets_data)
+
     def open_search_params(self, event):
-        category = self.ui.sub_categories_combobox.GetValue()
+        category = self.product_section_combobox.GetValue()
         group_name = event.GetEventObject().GetName()
-        if self.ui.sub_categories_combobox.GetValue() != '':
+        if self.product_section_combobox.GetValue() != '':
             self.show_template_dialog(category, group_name)
 
     def show_template_dialog(self, category, group_name):
@@ -173,8 +249,7 @@ class Multiparse(object):
 
     def generate_report(self, event):
         link = self.get_link_for_report()
-        url_get = requests.get(link.lower()).text
-        url_get_dict = json.loads(url_get)
+        url_get_dict = safe_get_requester(link.lower(), {})
         pages_count = url_get_dict['page']['last']
         total_product_count = url_get_dict['total']
         if not total_product_count:
@@ -187,7 +262,7 @@ class Multiparse(object):
             main_parameters = False
         else:
             return
-        with wx.FileDialog(self.ui, "Выберите место и имя для сохранения отчета",
+        with wx.FileDialog(self, "Выберите место и имя для сохранения отчета",
                            wildcard="Excel files (*.xlsx)|*.xlsx|All files (*.*)|*.*",
                            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
             if fileDialog.ShowModal() == wx.ID_CANCEL:
@@ -237,7 +312,7 @@ class Multiparse(object):
                 progress_window = wx.GenericProgressDialog('Товары выгружаются', 'Прогресс\nВыгружено {} из {}'
                                                            .format('0', str(total_product_count - goods_amount)),
                                                            maximum=total_product_count - goods_amount,
-                                                           parent=self.ui.parent,
+                                                           parent=self.parent,
                                                            style=wx.PD_APP_MODAL | wx.PD_ELAPSED_TIME |
                                                                  wx.PD_REMAINING_TIME | wx.PD_ESTIMATED_TIME |
                                                                  wx.PD_AUTO_HIDE | wx.PD_SMOOTH | wx.PD_CAN_ABORT)
@@ -253,8 +328,8 @@ class Multiparse(object):
             wait = None
 
     def get_link_for_report(self):
-        link = self.categories[self.ui.highest_categories_combobox.GetValue()][self.ui.categories_combobox.GetValue()][
-            self.ui.sub_categories_combobox.GetValue()]['catalog.schema.products']
+        link = self.categories[self.product_category_combobox.GetValue()][self.product_group_combobox.GetValue()][
+            self.product_section_combobox.GetValue()]['catalog.schema.products']
         if '?' in link:
             link += '&'
         else:
@@ -267,7 +342,7 @@ class Multiparse(object):
                         for parameter_dict_id, parameters_dict_value in value.items():
                             if parameters_dict_value:
                                 all_ids = []
-                                for i in self.categories_parameters[self.ui.sub_categories_combobox.GetValue()][1][
+                                for i in self.categories_parameters[self.product_section_combobox.GetValue()][1][
                                     'dictionaries'][parameter_dict_id]:
                                     if i['name'] in parameters_dict_value:
                                         all_ids.append(str(i['id']))
@@ -278,7 +353,7 @@ class Multiparse(object):
                         for parameter_dict_from_id, parameters_dict_from_value in value.items():
                             if parameters_dict_from_value:
                                 all_ids = []
-                                for i in self.categories_parameters[self.ui.sub_categories_combobox.GetValue()][1][
+                                for i in self.categories_parameters[self.product_section_combobox.GetValue()][1][
                                     'dictionaries'][parameter_dict_from_id]:
                                     if i['name'] in parameters_dict_from_value:
                                         all_ids.append(str(i['id']))
@@ -289,7 +364,7 @@ class Multiparse(object):
                         for parameter_dict_to_id, parameters_dict_to_value in value.items():
                             if parameters_dict_to_value:
                                 all_ids = []
-                                for i in self.categories_parameters[self.ui.sub_categories_combobox.GetValue()][1][
+                                for i in self.categories_parameters[self.product_section_combobox.GetValue()][1][
                                     'dictionaries'][parameter_dict_to_id]:
                                     if i['name'] in parameters_dict_to_value:
                                         all_ids.append(str(i['id']))
@@ -323,8 +398,7 @@ class Multiparse(object):
             if link not in self.product_parameters.keys():
                 try:
                     wait = wx.BusyInfo('Подгружаем параметры товаров...')
-                    url_get = requests.get(link.lower()).text
-                    url_get_dict = json.loads(url_get)
+                    url_get_dict = safe_get_requester(link.lower(), {})
                     self.get_all_product_parameters(link, url_get_dict['products'][0])
                     wait = None
                 except Exception as err:
@@ -338,7 +412,7 @@ class Multiparse(object):
         return all_headings
 
     def get_all_product_parameters(self, link, url_get_dict):
-        b = requests.get(url_get_dict['html_url']).text
+        b = safe_get_requester(url_get_dict['html_url'], raw_response=True).content
         soup = BeautifulSoup(b, 'lxml')
         specs_table = soup.find("table", class_="product-specs__table")
         specs_table_groups = specs_table.findAll('tbody')
@@ -356,6 +430,7 @@ class Multiparse(object):
                 self.product_parameters[link][group_headings[-1]] = headings
 
     def get_selected_product_parameters(self, product_link, selected_parameters):
+        # TODO: переделать выгрузку со страницы продукта, возможно дергать API
         b = safe_get_requester(product_link, raw_response=True).content
         soup = BeautifulSoup(b, 'lxml')
         specs_table = soup.find("table", class_="product-specs__table")

@@ -19,7 +19,6 @@ class TemplateMultiparseDialog(wx.Dialog):
         self.current_panel_product_parameters = controller.panel_product_parameters
         self.current_panel_main_parameters = controller.main_product_parameters
         self.group_name = group_name
-        self.ui = controller.ui
         self.controller = controller
         self._show_template_dlg_layout()
 
@@ -278,43 +277,3 @@ class ScrolledPanel(scrolled.ScrolledPanel):
             for element in self.GetChildren():
                 if isinstance(element, wx.CheckBox):
                     element.SetValue(False)
-
-
-class DialogWithGauge(wx.Dialog):
-
-    def __init__(self, caption, message, goods_amount, controller):
-        wx.Dialog.__init__(self, parent=None, title=caption, size=(500, 400),
-                           style=wx.CAPTION | wx.DIALOG_NO_PARENT)
-        self.controller = controller
-        self.gauge = wx.Gauge(self, range=goods_amount, name='progress_gauge', size=(-1, 25), style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
-        self.count = 0
-        self._show_dialog_with_gauge()
-
-    def _show_dialog_with_gauge(self):
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.cancel_button = wx.Button(self, label='Отменить', name='cancel')
-        self.cancel_button.SetFont(create_font(small_heading_font))
-        button_sizer.Add(self.cancel_button, flag=wx.ALL | wx.ALIGN_CENTER, border=5)
-
-        main_sizer.Add(self.gauge, flag=wx.EXPAND | wx.ALL, border=5)
-        main_sizer.Add((-1, 100), flag=wx.EXPAND)
-        main_sizer.Add(button_sizer, flag=wx.ALIGN_CENTER_HORIZONTAL)
-        self.SetSizer(main_sizer)
-
-        self.cancel_button.Bind(wx.EVT_BUTTON, self._close_dialog)
-        time.sleep(1)
-        self.OnStart()
-
-    def OnStart(self):
-        while True:
-            time.sleep(1)
-            self.count = self.count + 1
-            self.gauge.SetValue(self.count)
-
-            if self.count >= 20:
-                return
-
-    def _close_dialog(self, event):
-        self.Destroy()

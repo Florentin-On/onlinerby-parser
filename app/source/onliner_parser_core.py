@@ -4,11 +4,9 @@ All panels are initiating here.
 Set your menu elements here.
 """
 import logging
-import traceback
 import webbrowser
 from functools import partial
 
-import requests
 import wx
 
 from app.common.cache import app_cache, ui_cache
@@ -17,7 +15,6 @@ from app.common.log_collector import PATH_TO_ROOT_LOG
 from app.common.safe_requesters import safe_get_requester
 from app.common_ui.dialogs import confirmation_dialog
 from app.multiparse.multiparse import Multiparse
-from app.multiparse.multiparse_ui import MultiparsePanel
 from app.source.welcome_screen import WelcomePanel
 
 
@@ -186,13 +183,12 @@ class OnlinerParserApp(wx.Frame):
             )
         if panel_for_init == 'Parse Onliner Catalogue':
             logging.info('Initialising "{}"'.format(panel_for_init))
-            panel = MultiparsePanel(parent=self, size=MAIN_SIZE)
-            controller = Multiparse(panel)
+            panel = Multiparse(parent=self, size=MAIN_SIZE)
 
             self.panels[panel_for_init].update(
                 {
                     'panel': panel,
-                    'controller': controller,
+                    'controller': None,
                     'is_initialized': True,
                     'is_shown': True,
                 }
