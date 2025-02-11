@@ -54,15 +54,7 @@ def confirmation_with_cancel_dialog(caption, message, style=wx.YES_NO | wx.CANCE
     :return: bool: True if Yes pushed; False if No pushed
     """
     dlg = wx.MessageBox(message=message, caption=caption, style=style)
-
-    if dlg == wx.YES:
-        return wx.YES
-
-    if dlg == wx.NO:
-        return wx.NO
-
-    if dlg == wx.CANCEL:
-        return wx.CANCEL
+    return dlg
 
 
 def confirmation_dialog(caption, message, style=wx.YES_NO | wx.ICON_EXCLAMATION):

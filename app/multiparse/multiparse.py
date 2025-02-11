@@ -1,19 +1,19 @@
 import io
-import json
+import logging
 import os
 import time
 import traceback
+from copy import deepcopy
 from threading import Thread
+from typing import Optional, Dict, Any, Union
 
 import openpyxl
-import requests
 import wx
-from bs4 import BeautifulSoup
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image
 from openpyxl.styles import PatternFill
 
-from app.common.constants import get_panel_parameters, heading_excel_style, \
+from app.common.constants import get_filters_parameters, heading_excel_style, \
     heading_simple_excel_style, text_excel_style, link_excel_style, bool_true_excel_style, bool_false_excel_style, \
     get_main_parameters, heading_font, create_font
 from app.common.safe_requesters import safe_get_requester
@@ -24,14 +24,27 @@ from app.multiparse.multiparse_dialogs import TemplateMultiparseDialog
 class Multiparse(wx.Panel):
     def __init__(self, parent, size):
         wx.Panel.__init__(self, parent=parent, size=size)
-        self.filterNotSaved = False
-        self.productNotSaved = False
+        self.parent = parent
+
+        # Флаг для того, чтобы сбрасывать список параметров, выбранных для выгрузки в отчет, в случае изменения фильтра
+        self.filterSpecified = False
+        # Словарь вида "Категория -> Группа -> Раздел"
         self.categories = self.load_categories()
-        self.categories_parameters = {}
-        self.panel_parameters = get_panel_parameters()
-        self.product_parameters = {}
+        # Словарь с уже подгруженными параметрами Разделов. Ключ: название Раздела.
+        # Значение: кортеж URL раздела (facets) и данные по нему
+        self.sections_parameters = {}
+        # Параметры фильтров, которые разделены на "Основные" и "Дополнительные"
+        self.filters_parameters = get_filters_parameters()
+        # Постоянные параметры, которые есть у каждого товара. Используется для задания перечня того, что выводить в
+        # отчет из основных параметров. Ключ: название параметра. Значение: булево значение
         self.main_product_parameters = get_main_parameters()
-        self.panel_product_parameters = {}
+        # Данные по первому продукту для указанного фильтра. Ключ: URL с фильтром. Значение: параметры продукта в виде
+        # словаря. Словарь с параметрами: ключ - название группы параметров, значение - список параметров группы
+        self.product_parameters = {}
+        # Выбранные параметры продуктов, которые необходимо выводить в отчет от выбранного Раздела продуктов
+        # с примененным фильтром. Ключ: название группы параметров. Значение: список параметров группы в виде словаря
+        # с их значениями, где ключ - параметр, значение - булево значение параметра.
+        self.filtered_product_parameters = {}
 
         self.SetFont(create_font(heading_font))
         main_sizer = wx.BoxSizer(orient=wx.HORIZONTAL)
@@ -148,12 +161,12 @@ class Multiparse(wx.Panel):
         categories_keys = []
         combobox_name = product_combobox.GetName()
         if combobox_name == 'product_category_combobox':
-            categories_keys += list(self.categories.keys())
-        if combobox_name == 'product_group_combobox':
-            categories_keys += list(self.categories[self.product_category_combobox.GetValue()].keys())
-        if combobox_name == 'product_section_combobox':
+            categories_keys += list(self.categories)
+        elif combobox_name == 'product_group_combobox':
+            categories_keys += list(self.categories[self.product_category_combobox.GetValue()])
+        elif combobox_name == 'product_section_combobox':
             categories_keys += list(self.categories[self.product_category_combobox.GetValue()][
-                                        self.product_group_combobox.GetValue()].keys())
+                                        self.product_group_combobox.GetValue()])
         product_combobox.Append(categories_keys)
 
     def categories_changes(self, event: wx.Event) -> None:
@@ -178,135 +191,181 @@ class Multiparse(wx.Panel):
         elif key == 'product_section_combobox':
             category = self.product_category_combobox.GetValue()
             group = self.product_group_combobox.GetValue()
-            section_url = self.categories[category][group][combobox_value]
-            if category not in self.categories_parameters.keys():
-                self.get_all_panel_parameters(combobox_value, section_url['catalog.schema.facets'])
+            section_url = self.categories[category][group][combobox_value]['catalog.schema.facets']
+            if combobox_value not in self.sections_parameters:
+                self.sections_parameters[combobox_value] = (section_url, safe_get_requester(section_url, []))
+            self.select_search_general_params_button.Enable()
+            self.select_search_add_params_button.Enable()
+            self.select_needed_params_button.Enable()
+            self.generate_report_button.Enable()
 
-            button_disabled = not (self.select_search_general_params_button.IsEnabled() and
-                                   self.select_search_add_params_button.IsEnabled() and
-                                   self.select_needed_params_button.IsEnabled() and
-                                   self.generate_report_button.IsEnabled())
-            if button_disabled:
-                self.select_search_general_params_button.Enable()
-                self.select_search_add_params_button.Enable()
-                self.select_needed_params_button.Enable()
-                self.generate_report_button.Enable()
+            # Сбрасываем заданные фильтры и перечень выводимых в отчет параметров
+            self.filters_parameters = get_filters_parameters()
+            self.filtered_product_parameters = {}
 
-        button_enabled = self.select_search_general_params_button.IsEnabled() or \
-                         self.select_search_add_params_button.IsEnabled() or \
-                         self.select_needed_params_button.IsEnabled() or \
-                         self.generate_report_button.IsEnabled()
-        if self.product_section_combobox.GetValue() == '' and button_enabled:
+        if self.product_section_combobox.GetValue() == '':
             self.select_search_general_params_button.Disable()
             self.select_search_add_params_button.Disable()
             self.select_needed_params_button.Disable()
             self.generate_report_button.Disable()
-        if self.productNotSaved:
-            self.panel_parameters = get_panel_parameters()
-            self.panel_product_parameters = {}
-        self.productNotSaved = False
 
-    def get_all_panel_parameters(self, category: str, category_url: str):
-        section_facets_data = safe_get_requester(category_url, [])
-        self.categories_parameters[category] = (category_url, section_facets_data)
-
-    def open_search_params(self, event):
-        category = self.product_section_combobox.GetValue()
-        group_name = event.GetEventObject().GetName()
+    def open_search_params(self, event: wx.Event) -> None:
+        """
+        Метод открытия окна фильтров
+        :param event: wx.Event
+        """
+        section = self.product_section_combobox.GetValue()
+        filter_group_name = event.GetEventObject().GetName()
         if self.product_section_combobox.GetValue() != '':
-            self.show_template_dialog(category, group_name)
+            dlg = (
+                TemplateMultiparseDialog(self.sections_parameters[section], filter_group_name, self)
+                if filter_group_name in ('general', 'additional')
+                else self.set_report_parameters_dialog(filter_group_name)
+            )
+            if dlg is not None:
+                dlg.Center()
+                dlg.ShowModal()
+                dlg.Destroy()
 
-    def show_template_dialog(self, category, group_name):
-        if group_name in ('general', 'additional'):
-            dlg = TemplateMultiparseDialog(self.categories_parameters[category], group_name, self)
-        else:
-            link = self.get_link_for_report()
-            if link not in self.product_parameters.keys():
-                try:
-                    wait = wx.BusyInfo('Подгружаем параметры товаров...')
+    def set_report_parameters_dialog(self, filter_group_name: str) -> Optional[TemplateMultiparseDialog]:
+        """
+        Метод подгружает данные по первому товару, для которого применимы текущие выбранные параметры фильтра. Затем
+        открывает окно с выбором параметров для формирования отчета на основании полученных параметров из товара.
+        :param filter_group_name: Название кнопки, которое передается в открывающееся окно выбора параметров
+        """
+        link = self.get_link_from_filters()
+        if link not in self.product_parameters:
+            try:
+                with wx.BusyInfo('Подгружаем параметры товаров...'):
                     products_with_filter = safe_get_requester(link.lower(), {})
-                    if products_with_filter.get('products'):
-                        self.get_all_product_parameters(link, products_with_filter['products'][0])
-                        wait = None
-                    else:
-                        wait = None
-                        dialog('Не найдено', 'Товары с заданным фильтром не найдены!')
-                        return
-                except Exception as err:
-                    wait = None
-                    msg = 'Ошибка:\n' + str(err) + '\n\n' + 'Подробности в логах программы.'
-                    traceback.print_exc()
-                    dialog(caption='Ошибка', message=msg, style=wx.ICON_ERROR)
-                    return
-            if self.filterNotSaved:
-                self.panel_product_parameters = {}
-                self.filterNotSaved = False
-            dlg = TemplateMultiparseDialog(self.product_parameters[link], group_name, self)
-        dlg.Center()
-        dlg.ShowModal()
-        dlg.Destroy()
-        return dlg
+                if products_with_filter.get('products'):
+                    self.product_parameters[link] = self.get_all_product_parameters(
+                        products_with_filter['products'][0]['url'])
+                else:
+                    dialog('Не найдено', 'Товары с заданным фильтром не найдены!')
+                    return None
+            except Exception as err:
+                msg = 'Ошибка:\n' + str(err) + '\n\n' + 'Подробности в логах программы.'
+                traceback.print_exc()
+                dialog(caption='Ошибка', message=msg, style=wx.ICON_ERROR)
+                return None
+        # Если перед открытием диалога выбора выводимых в отчет параметров поменялись параметры фильтра - нужно сбросить
+        # текущий выбор параметров для вывода в отчет
+        if self.filterSpecified:
+            self.filtered_product_parameters = {}
+            self.filterSpecified = False
+        return TemplateMultiparseDialog(self.product_parameters[link], filter_group_name, self)
 
-    def generate_report(self, event):
-        link = self.get_link_for_report()
-        url_get_dict = safe_get_requester(link.lower(), {})
-        pages_count = url_get_dict['page']['last']
-        total_product_count = url_get_dict['total']
+    def get_link_from_filters(self) -> str:
+        """
+        Метод, который возвращает URL поиска товаров с заданными текущими фильтрами
+        """
+        products_link = \
+            self.categories[self.product_category_combobox.GetValue()][self.product_group_combobox.GetValue()][
+                self.product_section_combobox.GetValue()]['catalog.schema.products']
+        products_link += '&' if '?' in products_link else '?'
+        filter_parts = []
+
+        def process_dict_parameters(value, key_format):
+            for param_ids, param_values in value.items():
+                if param_values:
+                    all_ids = [
+                        str(i['id'])
+                        for i in
+                        self.sections_parameters[self.product_section_combobox.GetValue()][1]['dictionaries'][param_ids]
+                        if i['name'] in param_values
+                    ]
+                    filter_parts.extend([key_format.format(name=param_ids, id=num, value=p_value) for num, p_value in
+                                         enumerate(all_ids)])
+
+        for filter_type in self.filters_parameters.values():
+            for parameter_id, value in filter_type.items():
+                if value:
+                    if parameter_id == 'parameters_dict':
+                        process_dict_parameters(value, '{name}[{id}]={value}')
+                    elif parameter_id == 'parameters_dict_from':
+                        process_dict_parameters(value, '{name}[from]={value}')
+                    elif parameter_id == 'parameters_dict_to':
+                        process_dict_parameters(value, '{name}[to]={value}')
+                    elif parameter_id in ('parameters_number_range_from', 'parameters_number_range_to'):
+                        for param_id, param_value in value.items():
+                            if param_value:
+                                filter_parts.append(f'{param_id}[{parameter_id.split("_")[-1]}]={param_value}')
+                    elif parameter_id == 'parameters_checkbox':
+                        for param_id, param_value in value.items():
+                            if param_value:
+                                filter_parts.append(f'{param_id}={int(param_value)}')
+        return products_link + '&'.join(filter_parts)
+
+    @staticmethod
+    def get_all_product_parameters(product_url: str, only_headers: bool = True) -> Dict[str, Union[list, dict]]:
+        """
+        Метод, возвращающий либо только названия всех имеющихся параметров указанного продукта,
+        либо и названия, и значения этих параметров
+        :param product_url: URL продукта
+        :param only_headers: Флаг, отвечающий за возврат только списка параметров или вместе с их значениями
+        """
+        product_info = safe_get_requester(product_url + '?include=parameters', {})
+        return_parameters = {}
+        product_parameters = product_info.get('parameters', [])
+        if product_parameters:
+            for parameter_group in product_parameters:
+                product_group_parameters = parameter_group.get('parameters')
+                return_parameters[parameter_group['name']] = (
+                    [param['name'] for param in product_group_parameters] if only_headers
+                    else {param['name']: param['value'] for param in product_group_parameters}
+                )
+        return return_parameters
+
+    def generate_report(self, event) -> None:
+        """
+        Метод создания отчета по выбранному фильтру и с заданными параметрами для вывода в файл отчета
+        """
+        link = self.get_link_from_filters()
+        filtered_products_dict = safe_get_requester(link.lower(), {})
+        pages_count = filtered_products_dict['page']['last']
+        total_product_count = filtered_products_dict['total']
         if not total_product_count:
             dialog('Не найдено', 'Товары с указанным фильтром не найдены!')
-            return
+            return None
         result = confirmation_with_cancel_dialog('Основные параметры', 'Выгрузить в отчет только основные параметры?')
-        if result == wx.YES:
-            main_parameters = True
-        elif result == wx.NO:
-            main_parameters = False
+        if result in (wx.YES, wx.NO):
+            only_main_parameters = result == wx.YES
         else:
-            return
+            return None
         with wx.FileDialog(self, "Выберите место и имя для сохранения отчета",
                            wildcard="Excel files (*.xlsx)|*.xlsx|All files (*.*)|*.*",
                            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
             if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return
+                return None
 
             new_file = True
             pathname = fileDialog.GetPath()
-            progress_window = None
             try:
                 if os.path.isfile(pathname):
                     wb = openpyxl.load_workbook(pathname)
                     if 'DEV_ONLINER_PARSER' in wb.sheetnames:
                         stored_link = wb['DEV_ONLINER_PARSER']['A2'].value
                         if stored_link == link:
-                            result = confirmation_dialog("Внимание", "Файл, который вы выбрали, уже содержит товары с "
-                                                                     "заданным фильтром. Продолжить выгрузку в данный файл?",
-                                                         style=wx.YES_NO | wx.ICON_EXCLAMATION)
-                            if result == wx.YES:
+                            # TODO: подумать над тем, что в тот же файл можно начать выгружать с другими выбранными параметрами
+                            if confirmation_dialog("Внимание", "Файл, который вы выбрали, уже содержит товары с "
+                                                               "заданным фильтром. Продолжить выгрузку в данный файл?") == wx.YES:
                                 new_file = False
                             else:
-                                return
-                        else:
-                            result = confirmation_dialog("Внимание",
-                                                         "Файл, который вы выбрали, уже содержит товары другого "
-                                                         "фильтра. Вы утеряете все данные из данного файла. "
-                                                         "Продолжить?",
-                                                         style=wx.YES_NO | wx.ICON_EXCLAMATION)
-                            if result == wx.NO:
-                                return
-                    else:
-                        result = confirmation_dialog("Внимание", "Вы утеряете все данные из выбранного файла. "
-                                                                 "Продолжить?",
-                                                     style=wx.YES_NO | wx.ICON_EXCLAMATION)
-                        if result == wx.NO:
-                            return
+                                return None
+                        elif confirmation_dialog("Внимание",
+                                                 "Файл, который вы выбрали, уже содержит товары другого "
+                                                 "фильтра. Вы утеряете все данные из данного файла. Продолжить?") == wx.NO:
+                            return None
+                    elif confirmation_dialog("Внимание", "Вы утеряете все данные из выбранного файла. "
+                                                         "Продолжить?") == wx.NO:
+                        return None
                 selected_parameters = {}
-                if not main_parameters:
-                    selected_parameters = self.get_selected_parameters(link)
-                    if not selected_parameters:
-                        return
+                if not only_main_parameters:
+                    selected_parameters = self.get_parameters_for_workbook(link, filtered_products_dict)
                 if new_file:
-                    wait = wx.BusyInfo("Создается файл отчета...", None)
-                    self.create_empty_excel_table(pathname, selected_parameters, link, main_parameters)
-                wait = None
+                    with wx.BusyInfo("Создается файл отчета..."):
+                        self.create_empty_excel_table(pathname, selected_parameters, link, only_main_parameters)
                 wb = openpyxl.load_workbook(pathname)
                 goods_amount = wb['DEV_ONLINER_PARSER']['A1'].value
                 progress_window = wx.GenericProgressDialog('Товары выгружаются', 'Прогресс\nВыгружено {} из {}'
@@ -317,169 +376,47 @@ class Multiparse(wx.Panel):
                                                                  wx.PD_REMAINING_TIME | wx.PD_ESTIMATED_TIME |
                                                                  wx.PD_AUTO_HIDE | wx.PD_SMOOTH | wx.PD_CAN_ABORT)
 
-                Thread(target=self.process_report, args=(pathname, link, url_get_dict, pages_count,
+                Thread(target=self.process_report, args=(pathname, link, filtered_products_dict, pages_count,
                                                          selected_parameters, wb,
                                                          progress_window),
-                       kwargs={'main_parameters': main_parameters}).start()
+                       kwargs={'only_main_parameters': only_main_parameters}).start()
             except Exception as err:
                 msg = 'Ошибка создания отчета:\n' + str(err) + '\n\n' + 'Подробности в логах программы.'
                 traceback.print_exc()
                 dialog(caption='Ошибка', message=msg, style=wx.ICON_ERROR)
-            wait = None
+        event.Skip()
 
-    def get_link_for_report(self):
-        link = self.categories[self.product_category_combobox.GetValue()][self.product_group_combobox.GetValue()][
-            self.product_section_combobox.GetValue()]['catalog.schema.products']
-        if '?' in link:
-            link += '&'
-        else:
-            link += '?'
-        to_add = ''
-        for _ in self.panel_parameters.values():
-            for parameter_id, value in _.items():
-                if value:
-                    if parameter_id == 'parameters_dict':
-                        for parameter_dict_id, parameters_dict_value in value.items():
-                            if parameters_dict_value:
-                                all_ids = []
-                                for i in self.categories_parameters[self.product_section_combobox.GetValue()][1][
-                                    'dictionaries'][parameter_dict_id]:
-                                    if i['name'] in parameters_dict_value:
-                                        all_ids.append(str(i['id']))
-                                to_add += ''.join(
-                                    [parameter_dict_id + '[' + str(id) + ']=' + parameters_dict_value_i + '&' for
-                                     id, parameters_dict_value_i in enumerate(all_ids)])
-                    if parameter_id == 'parameters_dict_from':
-                        for parameter_dict_from_id, parameters_dict_from_value in value.items():
-                            if parameters_dict_from_value:
-                                all_ids = []
-                                for i in self.categories_parameters[self.product_section_combobox.GetValue()][1][
-                                    'dictionaries'][parameter_dict_from_id]:
-                                    if i['name'] in parameters_dict_from_value:
-                                        all_ids.append(str(i['id']))
-                                to_add += ''.join(
-                                    [parameter_dict_from_id + '[from]=' + parameters_dict_value_i + '&' for
-                                     parameters_dict_value_i in all_ids])
-                    if parameter_id == 'parameters_dict_to':
-                        for parameter_dict_to_id, parameters_dict_to_value in value.items():
-                            if parameters_dict_to_value:
-                                all_ids = []
-                                for i in self.categories_parameters[self.product_section_combobox.GetValue()][1][
-                                    'dictionaries'][parameter_dict_to_id]:
-                                    if i['name'] in parameters_dict_to_value:
-                                        all_ids.append(str(i['id']))
-                                to_add += ''.join([parameter_dict_to_id + '[to]=' + parameters_dict_value_i + '&' for
-                                                   parameters_dict_value_i in all_ids])
-                    if parameter_id == 'parameters_number_range_from':
-                        for parameter_number_from_id, parameters_number_from_value in value.items():
-                            if parameters_number_from_value:
-                                to_add += parameter_number_from_id + '[from]=' + parameters_number_from_value + '&'
-                    if parameter_id == 'parameters_number_range_to':
-                        for parameter_number_to_id, parameters_number_to_value in value.items():
-                            if parameters_number_to_value:
-                                to_add += parameter_number_to_id + '[to]=' + parameters_number_to_value + '&'
-                    if parameter_id == 'parameters_checkbox':
-                        for parameter_checkbox_id, parameters_checkbox_value in value.items():
-                            if parameters_checkbox_value:
-                                to_add += parameter_checkbox_id + '=' + str(int(parameters_checkbox_value)) + '&'
-        link += to_add
-        return link
-
-    def get_selected_parameters(self, link):
+    def get_parameters_for_workbook(self, link: str, filtered_products_dict: dict) -> Dict[str, list]:
+        """
+        Метод, возвращающий список параметров, который будет выгружен в отчет
+        :param link: URL списка продуктов с установленным фильтром
+        :param filtered_products_dict: словарь с данными по продуктам по заданному в link фильтре
+        """
         all_headings = {}
-        if self.panel_product_parameters:
-            for key, value in self.panel_product_parameters.items():
-                for flag_name, flag in value.items():
-                    if flag:
-                        if key not in all_headings.keys():
-                            all_headings[key] = []
-                        all_headings[key].append(flag_name)
+        if self.filtered_product_parameters:
+            for params_group, param in self.filtered_product_parameters.items():
+                for param_name, param_flag in param.items():
+                    if param_flag:
+                        if params_group not in all_headings:
+                            all_headings[params_group] = []
+                        all_headings[params_group].append(param_name)
         if not all_headings:
-            if link not in self.product_parameters.keys():
-                try:
-                    wait = wx.BusyInfo('Подгружаем параметры товаров...')
-                    url_get_dict = safe_get_requester(link.lower(), {})
-                    self.get_all_product_parameters(link, url_get_dict['products'][0])
-                    wait = None
-                except Exception as err:
-                    wait = None
-                    msg = 'Ошибка:\n' + str(err) + '\n\n' + 'Подробности в логах программы.'
-                    traceback.print_exc()
-                    dialog(caption='Ошибка', message=msg, style=wx.ICON_ERROR)
-                    return {}
-            for key, value in self.product_parameters[link].items():
-                all_headings[key] = value
+            if link not in self.product_parameters:
+                self.product_parameters[link] = self.get_all_product_parameters(
+                    filtered_products_dict['products'][0]['url'])
+            for params_group, param in self.product_parameters[link].items():
+                all_headings[params_group] = param
         return all_headings
 
-    def get_all_product_parameters(self, link, url_get_dict):
-        b = safe_get_requester(url_get_dict['html_url'], raw_response=True).content
-        soup = BeautifulSoup(b, 'lxml')
-        specs_table = soup.find("table", class_="product-specs__table")
-        specs_table_groups = specs_table.findAll('tbody')
-        group_headings = []
-        self.product_parameters[link] = {}
-        for group in specs_table_groups:
-            settings_block = group.find('tr', class_='product-specs__table-title')
-            if settings_block is not None:
-                group_headings.append(group.find('tr', class_='product-specs__table-title').text.strip())
-                headings = []
-                for finded_params in group.findAll('tr', class_=lambda x: x is None):
-                    finded_td = finded_params.find('td', class_=lambda x: x is None)
-                    if finded_td is not None:
-                        headings.append(finded_td.text.strip())
-                self.product_parameters[link][group_headings[-1]] = headings
-
-    def get_selected_product_parameters(self, product_link, selected_parameters):
-        # TODO: переделать выгрузку со страницы продукта, возможно дергать API
-        b = safe_get_requester(product_link, raw_response=True).content
-        soup = BeautifulSoup(b, 'lxml')
-        specs_table = soup.find("table", class_="product-specs__table")
-        specs_table_groups = specs_table.findAll('tbody')
-        parameters = {}
-        for group in specs_table_groups:
-            parameter_group = group.find('tr', class_='product-specs__table-title').text.strip()
-            parameters[parameter_group] = {}
-            headings = ''
-            for finded_params in group.findAll('tr', class_=''):
-                finded_td = finded_params.find('td', class_='')
-                finded_tip = finded_td.find('p', class_='product-tip__term')
-                if finded_tip:
-                    headings = finded_tip.text.strip()
-                else:
-                    headings = finded_td.text.strip()
-                parameters[parameter_group][headings] = {}
-                finded_text = finded_params.find('span', class_='value__text')
-                if finded_text:
-                    parameters[parameter_group][headings] = self.normilize_title(finded_text.text.strip())
-                    continue
-                finded_plus = finded_params.find('span', class_='i-tip')
-                if finded_plus:
-                    parameters[parameter_group][headings] = True
-                    continue
-                finded_minus = finded_params.find('span', class_='i-x')
-                if finded_minus:
-                    parameters[parameter_group][headings] = False
-                    continue
-                # здесь нужно FindAll
-                finded_link = finded_params.findAll('span', class_='value__link')
-                if finded_link:
-                    parameters[parameter_group][headings] = [(self.normilize_title(i.text.strip()),
-                                                              i.contents[0].attrs['href']) for i in finded_link]
-                    continue
-                parameters[parameter_group][headings] = 'НЕ НАЙДЕНО'
-        return_parameters = {}
-        for sel_key, sel_value in selected_parameters.items():
-            return_parameters[sel_key] = {}
-            for sel_key_value in sel_value:
-                return_parameters[sel_key][sel_key_value] = '-'
-        for key, value in parameters.items():
-            if key in selected_parameters.keys():
-                for param in value.keys():
-                    if param in selected_parameters[key]:
-                        return_parameters[key][param] = parameters[key][param]
-        return return_parameters
-
-    def create_empty_excel_table(self, pathname, all_headings, link, main_parameters):
+    def create_empty_excel_table(self, pathname: str, selected_parameters: dict, link: str, only_main_parameters: bool):
+        """
+        Метод создает пустую таблицу со скрытым листом, в которую прописывается URL текущего фильтра для возможности
+        прерывания и последующего возобновления выгрузки в один и тот же файл
+        :param pathname: Путь до файла отчета
+        :param selected_parameters: Все параметры, которые должны отображаться в отчете
+        :param link: URL списка продуктов с установленным фильтром
+        :param only_main_parameters: Флаг, отвечающий за необходимость выгрузки только основных параметров продуктов
+        """
         wb = Workbook()
         ws = wb.active
         ws.title = 'Report'
@@ -490,23 +427,21 @@ class Multiparse(wx.Panel):
         wb.add_named_style(bool_true_excel_style)
         wb.add_named_style(bool_false_excel_style)
         wb.add_named_style(heading_simple_excel_style)
-        process_headings = [heading for heading in self.main_product_parameters.keys() if
+        process_headings = [heading for heading in self.main_product_parameters if
                             self.main_product_parameters[heading]]
-        for title in process_headings + ['        ']:
-            ws.cell(column=id, row=1, value=title).style = 'Heading Style'
+        for column_id, title in enumerate(process_headings, start=id):
+            ws.cell(column=column_id, row=1, value=title).style = 'Heading Style'
             # ws.column_dimensions[openpyxl.utils.get_column_letter(id)].width = len(title)
+            id = column_id + 1
 
-            id += 1
-
-        if not main_parameters:
-            for group in all_headings:
-                ws.cell(column=id, row=1, value=group).style = 'Heading Style'
-                # ws.column_dimensions[openpyxl.utils.get_column_letter(id)].width = len(group)
+        if not only_main_parameters:
+            for group_heading in selected_parameters:
+                ws.cell(column=id, row=1, value=group_heading).style = 'Heading Style'
                 id += 1
-                for heading in all_headings[group]:
+                # ws.column_dimensions[openpyxl.utils.get_column_letter(id)].width = len(group)
+                for heading in selected_parameters[group_heading]:
                     # ws.column_dimensions[openpyxl.utils.get_column_letter(id)].width = len(heading)
                     ws.cell(column=id, row=1, value=heading).style = 'Heading Text Style'
-
                     id += 1
         ws.freeze_panes = 'A2'
         ws.auto_filter.ref = ws.dimensions
@@ -517,31 +452,52 @@ class Multiparse(wx.Panel):
         wb.save(pathname)
         wb.close()
 
-    def process_report(self, pathname, link, url_get_dict, pages_count, selected_parameters, wb: Workbook,
-                       progress_window: wx.GenericProgressDialog, main_parameters=False):
+    def process_report(self,
+                       pathname: str,
+                       search_link: str,
+                       filtered_products_dict: dict,
+                       pages_count: int,
+                       selected_parameters: dict,
+                       wb: Workbook,
+                       progress_window: wx.GenericProgressDialog,
+                       only_main_parameters: bool = False) -> None:
+        """
+        Метод, который формирует отчет в Excel по заданному фильтру поиска и заданным параметрам для выгрузки
+        :param pathname: Путь до Excel файла с отчетом
+        :param search_link: URL со списком продуктов по заданным фильтрам
+        :param filtered_products_dict: Словарь с первой страницей продуктов, отфильтрованными по заданным параметрам
+        фильтров
+        :param pages_count: Количество страниц продуктов по заданному фильтру
+        :param selected_parameters: Выбранные для выгрузки в отчет параметры
+        :param wb: Рабочая книга Excel, в которую ведется запись
+        :param progress_window: Окно отображения прогресса выгрузки
+        :param only_main_parameters: Флаг, отвечающий за необходимость выгрузки только основных параметров (ускоряет
+        выгрузку, т.к. не требует запроса информации по каждому продукту в отдельности)
+        """
         goods_amount = wb['DEV_ONLINER_PARSER']['A1'].value
+        current_page_products_dict = deepcopy(filtered_products_dict)
         start_index = 1
         if goods_amount != 0:
             start_index = goods_amount // 30 + 1
-        sleep = 0.2
+        sleep = 0.1
         progress_window_bar = 0
         delta_iterate_value = 2
         for i in range(start_index, pages_count + 1):
             break_flag = False
             if i != 1:
-                proceeded_link = link
+                proceeded_link = search_link
                 time.sleep(sleep)
                 proceeded_link += 'page=' + str(i)
-                url_get = requests.get(proceeded_link.lower()).text
-                url_get_dict = json.loads(url_get)
+                current_page_products_dict = safe_get_requester(proceeded_link.lower(), {})
             ws = wb.active
             start_page_index = goods_amount % 30
-            for product in url_get_dict['products'][start_page_index:]:
+            for product in current_page_products_dict['products'][start_page_index:]:
                 product_html = product['html_url']
                 id = 1
-                for main_header, value in self.main_product_parameters.items():
-                    if value:
-                        ws.cell(column=id, row=goods_amount + delta_iterate_value).style = 'Text Style'
+                row_id = goods_amount + delta_iterate_value
+                for main_header, flag in self.main_product_parameters.items():
+                    if flag:
+                        ws.cell(column=id, row=row_id).style = 'Text Style'
                         if main_header == 'Картинка':
                             if product['images']['header']:
                                 img_link = product['images']['header']
@@ -549,44 +505,45 @@ class Multiparse(wx.Panel):
                                 if r is not None:
                                     image_file = io.BytesIO(r.content)
                                     img = Image(image_file)
-                                    img.anchor = ws.cell(column=1, row=goods_amount + delta_iterate_value).coordinate
-                                    img_width = (img.width - 5) / 7.0
+                                    img.anchor = ws.cell(column=1, row=row_id).coordinate
+                                    img_width = img.width / 7.0
                                     if img_width > ws.column_dimensions['A'].width:
                                         ws.column_dimensions['A'].width = img_width
-                                    ws.row_dimensions[goods_amount + delta_iterate_value].height = img.height / 1.33
+                                    ws.row_dimensions[row_id].height = img.height / 1.33
                                     ws.add_image(img)
                             else:
-                                ws.cell(column=id, row=goods_amount + delta_iterate_value, value='-')
-                        if main_header == 'Бренд':
+                                ws.cell(column=id, row=row_id, value='-')
+                        elif main_header == 'Бренд':
                             brand = product['full_name'].replace(product['name'], '')
-                            ws.cell(column=id, row=goods_amount + delta_iterate_value, value=brand)
-                        if main_header == 'Модель и ссылка на Onliner':
-                            ws.cell(column=id, row=goods_amount + delta_iterate_value,
-                                    value='=HYPERLINK("{}", "{}")'.format(product_html, product['name'])).style = \
-                                'Link Style'
-                        if main_header == 'Тип':
-                            ws.cell(column=id, row=goods_amount + delta_iterate_value, value=product['name_prefix'])
-                        if main_header == 'Цена минимальная':
-                            ws.cell(column=id, row=goods_amount + delta_iterate_value,
+                            ws.cell(column=id, row=row_id, value=brand)
+                        elif main_header == 'Модель и ссылка на Onliner':
+                            ws.cell(column=id, row=row_id, value='=HYPERLINK("{}", "{}")'
+                                    .format(product_html, product['name'])).style = 'Link Style'
+                        elif main_header == 'Тип':
+                            ws.cell(column=id, row=row_id, value=product['name_prefix'])
+                        elif main_header == 'Цена минимальная':
+                            ws.cell(column=id, row=row_id,
                                     value=float(product['prices']['price_min']['amount']) if product['prices'] else '-')
-                        if main_header == 'Цена максимальная':
-                            ws.cell(column=id, row=goods_amount + delta_iterate_value,
+                        elif main_header == 'Цена максимальная':
+                            ws.cell(column=id, row=row_id,
                                     value=float(product['prices']['price_max']['amount']) if product['prices'] else '-')
-                        if main_header == 'Количество предложений':
-                            ws.cell(column=id, row=goods_amount + delta_iterate_value,
+                        elif main_header == 'Количество предложений':
+                            ws.cell(column=id, row=row_id,
                                     value=product['prices']['offers']['count'] if product['prices'] else '-')
                         id += 1
-                id += 1
-                time.sleep(sleep)
-                if not main_parameters:
-                    selected_product_parameters = self.get_selected_product_parameters(product_html,
+
+                if not only_main_parameters:
+                    time.sleep(sleep)
+                    product_api_url = product['url']
+                    selected_product_parameters = self.get_selected_product_parameters(product_api_url,
                                                                                        selected_parameters)
                     need_row_to_increase = 0
-                    for group_id, value in enumerate(selected_product_parameters.values()):
-                        ws.cell(column=id, row=goods_amount + delta_iterate_value, value=' ').fill = \
+                    for group in selected_product_parameters.values():
+                        ws.cell(column=id, row=row_id, value=' ').fill = \
                             PatternFill(start_color='F2F2F2', end_color='F2F2F2', fill_type='solid')
                         id += 1
-                        for parameter_name, parameter_value in value.items():
+                        for parameter_name, parameter_value_list in group.items():
+                            """
                             if isinstance(parameter_value, list):
                                 need_row_to_increase = len(parameter_value) - 1
                                 if need_row_to_increase > 1:
@@ -594,36 +551,60 @@ class Multiparse(wx.Panel):
                                             [len(i.values()) + 1 for i in selected_product_parameters.values()])):
                                         if merge_id != id:
                                             ws.merge_cells(start_column=merge_id,
-                                                           start_row=goods_amount + delta_iterate_value,
+                                                           start_row=row_id,
                                                            end_column=merge_id,
-                                                           end_row=goods_amount + delta_iterate_value +
-                                                                   need_row_to_increase)
+                                                           end_row=row_id + need_row_to_increase)
                                 for list_value in parameter_value:
-                                    ws.cell(column=id,
-                                            row=goods_amount + delta_iterate_value + parameter_value.index(list_value),
-                                            value='=HYPERLINK("{}", "{}")'.format(list_value[1], list_value[0])).style = \
-                                        'Link Style'
-
-                            elif isinstance(parameter_value, bool):
-                                ws.cell(column=id, row=goods_amount + delta_iterate_value, value=str(parameter_value))
-                                if parameter_value:
-                                    ws.cell(column=id, row=goods_amount + delta_iterate_value).style = 'Bool True Style'
+                                    ws.cell(column=id, row=row_id + parameter_value.index(list_value),
+                                            value='=HYPERLINK("{}", "{}")'
+                                            .format(list_value[1], list_value[0])).style = 'Link Style'
+                            """
+                            if parameter_value_list == '-':
+                                ws.cell(column=id, row=row_id, value=str(parameter_value_list)).style = 'Text Style'
+                            elif len(parameter_value_list) == 1:
+                                param_type = parameter_value_list[0]['type']
+                                if param_type == 'link':
+                                    param_links = parameter_value_list[0]['link']
+                                    if isinstance(param_links, dict):
+                                        ws.cell(column=id, row=row_id, value='=HYPERLINK("{}", "{}")'
+                                                .format(param_links['source_urls']['catalog.product.web'],
+                                                        param_links['title'])).style = 'Link Style'
+                                    else:
+                                        logging.warning(f'Too much links for parameter or it is not dict. '
+                                                        f'Product: {product_api_url}. Parameter: '
+                                                        f'{parameter_value_list[0]}')
+                                elif param_type == 'bool':
+                                    parameter_value = parameter_value_list[0]['value']
+                                    ws.cell(column=id, row=row_id, value=str(parameter_value)).style = \
+                                        'Bool True Style' if parameter_value else 'Bool False Style'
+                                elif param_type == 'string':
+                                    parameter_value = parameter_value_list[0]['value']
+                                    ws.cell(column=id, row=row_id, value=str(parameter_value)).style = 'Text Style'
                                 else:
-                                    ws.cell(column=id,
-                                            row=goods_amount + delta_iterate_value).style = 'Bool False Style'
-                            else:
-                                ws.cell(column=id, row=goods_amount + delta_iterate_value).style = 'Text Style'
-                                ws.cell(column=id, row=goods_amount + delta_iterate_value, value=str(parameter_value))
+                                    logging.warning(f'Unknown type of parameter {param_type}. '
+                                                    f'Product: {product_api_url}. Parameter: {parameter_value_list[0]}')
+                            elif len(parameter_value_list) == 2:
+                                parameter_value = {'string': None, 'bool': None}
+                                for parameter in parameter_value_list:
+                                    param_type = parameter['type']
+                                    if param_type in parameter_value:
+                                        parameter_value[param_type] = parameter['value']
+                                    else:
+                                        logging.warning(f'Unknown type of parameter {param_type}. Product: '
+                                                        f'{product_api_url}. Parameter(-s): {parameter_value_list[0]}')
+                                ws.cell(column=id, row=row_id, value=str(parameter_value['string'])).style = \
+                                    'Bool True Style' if parameter_value['bool'] else 'Bool False Style'
                             id += 1
                     delta_iterate_value += need_row_to_increase
                 goods_amount += 1
                 wb['DEV_ONLINER_PARSER']['A1'].value = goods_amount
                 progress_window_bar += 1
+                product_name_cutted = f'{product["full_name"][:25]}...'
                 if (progress_window.WasCancelled() or
                         not progress_window.Update(progress_window_bar,
                                                    newmsg='Прогресс\nВыгружено {} из {}. Выгружаю продукт: {}'.format(
                                                        progress_window_bar, str(progress_window.GetRange()),
-                                                       product['full_name']))[0]):
+                                                       product_name_cutted))[0]):
                     break_flag = True
                     break
             if break_flag:
@@ -641,6 +622,33 @@ class Multiparse(wx.Panel):
             caption, message, icon = 'Ошибка', msg, wx.ICON_ERROR
         dialog(caption, message, icon)
         progress_window.Destroy()
-        if os.path.isfile(pathname):
-            os.startfile(pathname)
+        try:
+            if os.path.isfile(pathname):
+                os.startfile(pathname)
+        except Exception as error:
+            traceback.print_exc()
+            logging.exception(error)
         return None
+
+    def get_selected_product_parameters(self, product_link: str, selected_parameters: dict) -> Dict[
+        str, Dict[str, list]]:
+        """
+        Метод, возвращающий все параметры выбранного продукта с учетом выбранных параметров для выгрузки в отчет
+        :param product_link: URL выбранного продукта
+        :param selected_parameters: Выбранные для выгрузки в отчет параметры
+        """
+        product_proceeded_parameters: Dict[str, Dict[str, Any]] = self.get_all_product_parameters(product_link,
+                                                                                                  only_headers=False)
+
+        return_parameters: Dict[str, Dict[str, Any]] = {}
+        for sel_group, sel_group_list in selected_parameters.items():
+            return_parameters[sel_group] = {}
+            for sel_group_value in sel_group_list:
+                return_parameters[sel_group][sel_group_value] = '-'
+        for group_name, group_list in product_proceeded_parameters.items():
+            if group_name in selected_parameters:
+                for group_parameter in group_list:
+                    if group_parameter in selected_parameters[group_name]:
+                        return_parameters[group_name][group_parameter] = product_proceeded_parameters[group_name][
+                            group_parameter]
+        return return_parameters

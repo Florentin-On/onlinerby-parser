@@ -50,14 +50,14 @@ bool_false_excel_style = NamedStyle(name='Bool False Style',
                                     alignment=Alignment(vertical='center'))
 
 
-def get_panel_parameters():
+def get_filters_parameters() -> dict:
     return {
-        'general': _get_sub_panel_parameters(),
-        'additional': _get_sub_panel_parameters(),
+        'general': _get_sub_filters_parameters(),
+        'additional': _get_sub_filters_parameters(),
     }
 
 
-def _get_sub_panel_parameters():
+def _get_sub_filters_parameters() -> dict:
     return {
         'parameters_dict': {},
         'parameters_dict_from': {},
@@ -68,7 +68,7 @@ def _get_sub_panel_parameters():
     }
 
 
-def get_main_parameters():
+def get_main_parameters() -> dict:
     return {x: True for x in
             ['Картинка', 'Бренд', 'Модель и ссылка на Onliner', 'Тип',
              'Цена минимальная', 'Цена максимальная', 'Количество предложений']}

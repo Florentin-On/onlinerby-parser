@@ -11,12 +11,12 @@ class TemplateMultiparseDialog(wx.Dialog):
         """Constructor"""
 
         # DIALOG_NO_PARENT - to prevent been on top of the app
-        wx.Dialog.__init__(self, parent=None, title='Выбрать параметры',
+        wx.Dialog.__init__(self, parent=None, title='Выбрать параметры для фильтра',
                            style=wx.CAPTION | wx.DIALOG_NO_PARENT)
 
         self.parameters = parameters
-        self.current_panel_parameters = controller.panel_parameters
-        self.current_panel_product_parameters = controller.panel_product_parameters
+        self.current_panel_parameters = controller.filters_parameters
+        self.current_panel_product_parameters = controller.filtered_product_parameters
         self.current_panel_main_parameters = controller.main_product_parameters
         self.group_name = group_name
         self.controller = controller
@@ -32,7 +32,8 @@ class TemplateMultiparseDialog(wx.Dialog):
         elif self.group_name == 'additional':
             label = 'Дополнительные'
         else:
-            label = 'Параметры товаров'
+            self.SetTitle('Выбрать параметры для отчета')
+            label = 'Параметры товаров для отчета'
         group_name_label = wx.StaticText(self, label=label)
         group_name_label.SetFont(create_font(small_heading_font))
         up_sizer.Add(group_name_label, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
@@ -74,19 +75,18 @@ class TemplateMultiparseDialog(wx.Dialog):
             for key, value in self.up_sizer_scroll.current_panel_parameters.items():
                 if key == 'parameters_dict':
                     for parameter_id, control in value.items():
-                        self.controller.panel_parameters[self.group_name][key][parameter_id] = \
+                        self.controller.filters_parameters[self.group_name][key][parameter_id] = \
                             control.GetCheckedStrings()
                 if key == 'parameters_dict_from' or key == 'parameters_dict_to':
                     for parameter_id, control in value.items():
-                        self.controller.panel_parameters[self.group_name][key][parameter_id] = \
+                        self.controller.filters_parameters[self.group_name][key][parameter_id] = \
                             control.GetStringSelection()
                 if key == 'parameters_number_range_from' or key == 'parameters_number_range_to' or \
                         key == 'parameters_checkbox':
                     for parameter_id, control in value.items():
-                        self.controller.panel_parameters[self.group_name][key][parameter_id] = \
+                        self.controller.filters_parameters[self.group_name][key][parameter_id] = \
                             control.GetValue()
-            self.controller.productNotSaved = True
-            self.controller.filterNotSaved = True
+            self.controller.filterSpecified = True
             self.Destroy()
         elif button_name == 'cancel':
             self.Destroy()
@@ -94,10 +94,9 @@ class TemplateMultiparseDialog(wx.Dialog):
             for parameter_id, control in self.main_parameters_scroll.current_product_panel_parameters.items():
                 self.controller.main_product_parameters[parameter_id] = control.GetValue()
             for parameter_group, parameter in self.up_sizer_scroll.current_product_panel_parameters.items():
-                self.controller.panel_product_parameters[parameter_group] = {}
+                self.controller.filtered_product_parameters[parameter_group] = {}
                 for parameter_id, control in parameter.items():
-                    self.controller.panel_product_parameters[parameter_group][parameter_id] = control.GetValue()
-            self.controller.productNotSaved = True
+                    self.controller.filtered_product_parameters[parameter_group][parameter_id] = control.GetValue()
             self.Destroy()
 
 
