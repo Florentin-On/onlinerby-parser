@@ -1,4 +1,7 @@
+import json
+import logging
 import os
+import sys
 
 import wx
 from openpyxl.styles import Font, PatternFill, Alignment, NamedStyle
@@ -79,3 +82,25 @@ def create_font(data):
     size, family, style, weight, face = data
     font = wx.Font(size, family, style, weight)
     return font
+
+def safe_load_json(path_to_json: str) -> dict:
+    try:
+        return json.load(open(path_to_json, 'r'))
+    except Exception as error:
+        logging.warning(f'Can\'t load config: {path_to_json}. Error: {error}')
+        return {}
+
+def resource_path(relative_path: str) -> str:
+    """
+    The function creates a path depending on the code used. Source code - the current working directory is used,
+    determined by the presence of the start_source file. There is no start_source in the build,
+    which means sys._MEIPASS will be used.
+    This variable is created by the build itself after launch and stores unpacked resources along this path.
+    :param relative_path: relative path to a file
+    :type relative_path: str
+    :return: return absolute path to file
+    :rtype: str or None
+    """
+    base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.getcwd()
+    logging.info(f'Base path: {base_path}')
+    return os.path.join(base_path, relative_path)

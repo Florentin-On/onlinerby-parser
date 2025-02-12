@@ -10,7 +10,7 @@ from functools import partial
 import wx
 
 from app.common.cache import app_cache, ui_cache
-from app.common.constants import MAIN_TITLE, MIN_SIZE, MAX_SIZE, MAIN_SIZE, ABOUT_URL, SETTINGS
+from app.common.constants import MAIN_TITLE, MIN_SIZE, MAX_SIZE, MAIN_SIZE, ABOUT_URL, SETTINGS, resource_path
 from app.common.log_collector import PATH_TO_ROOT_LOG
 from app.common.safe_requesters import safe_get_requester
 from app.common_ui.dialogs import confirmation_dialog
@@ -93,13 +93,7 @@ class OnlinerParserApp(wx.Frame):
 
         # make icon
         icon = wx.Icon()
-        # There will normally be a log message if a non-existent file or png file with empty pixels
-        # is loaded into a wx.Bitmap.
-        # It can be suppressed with wx.LogNull
-        no_log = wx.LogNull()
-        icon.CopyFromBitmap(wx.Bitmap("app/source/onliner_parser.ico", wx.BITMAP_TYPE_ANY))
-        # when noLog is destroyed the old log sink is restored
-        del no_log
+        icon.CopyFromBitmap(wx.Bitmap(resource_path("app/source/onliner_parser.ico"), wx.BITMAP_TYPE_ANY))
         self.SetIcon(icon)
 
         # set main sizer

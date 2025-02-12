@@ -14,8 +14,7 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-from app import safe_load_json
-from app.common.constants import APPDATA_PATH
+from app.common.constants import APPDATA_PATH, safe_load_json
 
 
 class CoreCache(object):
