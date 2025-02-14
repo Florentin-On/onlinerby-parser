@@ -5,7 +5,7 @@ cwd_path = os.getcwd()
 
 
 a = Analysis(
-    ['app\\onliner_parser.py'],
+    ['cli.py'],
     pathex=[],
     binaries=[],
     datas=[],
