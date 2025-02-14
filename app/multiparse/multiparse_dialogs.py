@@ -10,7 +10,7 @@ class TemplateMultiparseDialog(wx.Dialog):
     def __init__(self, parameters, group_name, controller):
         """Constructor"""
         wx.Dialog.__init__(self, parent=None, title='Выбрать параметры для фильтра',
-                           style=wx.CAPTION | wx.CLOSE)
+                           style=wx.CAPTION | wx.CLOSE_BOX)
 
         self.parameters = parameters
         self.current_panel_parameters = controller.filters_parameters

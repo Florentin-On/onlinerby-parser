@@ -357,12 +357,13 @@ class Multiparse(wx.Panel):
                     elif confirmation_dialog("Внимание", "Вы утеряете все данные из выбранного файла. "
                                                          "Продолжить?") == wx.NO:
                         return None
-                selected_parameters = {}
+                selected_main_parameters = {param: value for param, value in self.main_product_parameters.items()}
+                selected_add_parameters = {}
                 if not only_main_parameters:
-                    selected_parameters = self.get_parameters_for_workbook(link, filtered_products_dict)
+                    selected_add_parameters = self.get_parameters_for_workbook(link, filtered_products_dict)
                 if new_file:
                     with wx.BusyInfo("Создается файл отчета..."):
-                        self.create_empty_excel_table(pathname, selected_parameters, link, only_main_parameters)
+                        self.create_empty_excel_table(pathname, selected_add_parameters, link, only_main_parameters)
                 wb = openpyxl.load_workbook(pathname)
                 goods_amount = wb['DEV_ONLINER_PARSER']['A1'].value
                 progress_window = wx.GenericProgressDialog('Товары выгружаются', 'Прогресс\nВыгружено {} из {}'
@@ -373,9 +374,9 @@ class Multiparse(wx.Panel):
                                                                  wx.PD_REMAINING_TIME | wx.PD_ESTIMATED_TIME |
                                                                  wx.PD_AUTO_HIDE | wx.PD_SMOOTH | wx.PD_CAN_ABORT)
 
-                Thread(target=self.process_report, args=(pathname, link, filtered_products_dict, pages_count,
-                                                         selected_parameters, wb,
-                                                         progress_window),
+                Thread(target=self.process_report, daemon=True,
+                       args=(pathname, link, filtered_products_dict, pages_count, selected_main_parameters,
+                       selected_add_parameters, wb, progress_window),
                        kwargs={'only_main_parameters': only_main_parameters}).start()
             except Exception as err:
                 msg = 'Ошибка создания отчета:\n' + str(err) + '\n\n' + 'Подробности в логах программы.'
@@ -454,7 +455,8 @@ class Multiparse(wx.Panel):
                        search_link: str,
                        filtered_products_dict: dict,
                        pages_count: int,
-                       selected_parameters: dict,
+                       selected_main_parameters: dict,
+                       selected_add_parameters: dict,
                        wb: Workbook,
                        progress_window: wx.GenericProgressDialog,
                        only_main_parameters: bool = False) -> None:
@@ -465,7 +467,8 @@ class Multiparse(wx.Panel):
         :param filtered_products_dict: Словарь с первой страницей продуктов, отфильтрованными по заданным параметрам
         фильтров
         :param pages_count: Количество страниц продуктов по заданному фильтру
-        :param selected_parameters: Выбранные для выгрузки в отчет параметры
+        :param selected_main_parameters: Выбранные для выгрузки в отчет основные параметры
+        :param selected_add_parameters: Выбранные для выгрузки в отчет продукт-специфичные параметры
         :param wb: Рабочая книга Excel, в которую ведется запись
         :param progress_window: Окно отображения прогресса выгрузки
         :param only_main_parameters: Флаг, отвечающий за необходимость выгрузки только основных параметров (ускоряет
@@ -492,7 +495,7 @@ class Multiparse(wx.Panel):
                 product_html = product['html_url']
                 id = 1
                 row_id = goods_amount + delta_iterate_value
-                for main_header, flag in self.main_product_parameters.items():
+                for main_header, flag in selected_main_parameters.items():
                     if flag:
                         ws.cell(column=id, row=row_id).style = 'Text Style'
                         if main_header == 'Картинка':
@@ -504,8 +507,7 @@ class Multiparse(wx.Panel):
                                     img = Image(image_file)
                                     img.anchor = ws.cell(column=1, row=row_id).coordinate
                                     img_width = img.width / 7.0
-                                    if img_width > ws.column_dimensions['A'].width:
-                                        ws.column_dimensions['A'].width = img_width
+                                    ws.column_dimensions['A'].width = max(ws.column_dimensions['A'].width, img_width)
                                     ws.row_dimensions[row_id].height = img.height / 1.33
                                     ws.add_image(img)
                             else:
@@ -541,7 +543,7 @@ class Multiparse(wx.Panel):
                     time.sleep(sleep)
                     product_api_url = product['url']
                     selected_product_parameters = self.get_selected_product_parameters(product_api_url,
-                                                                                       selected_parameters)
+                                                                                       selected_add_parameters)
                     need_row_to_increase = 0
                     for group in selected_product_parameters.values():
                         ws.cell(column=id, row=row_id, value=' ').fill = \

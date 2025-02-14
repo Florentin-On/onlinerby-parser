@@ -42,10 +42,3 @@ exe = EXE(
     entitlements_file=None,
     icon=icon_res_path,
 )
-coll = COLLECT(
-    exe,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='onliner_parser_build',
-)
