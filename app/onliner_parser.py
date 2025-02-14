@@ -24,7 +24,3 @@ def run():
     frame.SetFocus()
 
     app.MainLoop()
-
-
-if __name__ == '__main__':
-    run()

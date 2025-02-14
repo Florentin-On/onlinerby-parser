@@ -73,8 +73,8 @@ def _get_sub_filters_parameters() -> dict:
 
 def get_main_parameters() -> dict:
     return {x: True for x in
-            ['Картинка', 'Бренд', 'Модель и ссылка на Onliner', 'Тип',
-             'Цена минимальная', 'Цена максимальная', 'Количество предложений']}
+            ['Картинка', 'Бренд', 'Модель и ссылка на Onliner', 'Тип', 'Цена минимальная', 'Цена максимальная',
+             'Количество предложений', 'Оценка и Количество отзывов', 'Стикеры']}
 
 
 def create_font(data):
@@ -83,12 +83,14 @@ def create_font(data):
     font = wx.Font(size, family, style, weight)
     return font
 
+
 def safe_load_json(path_to_json: str) -> dict:
     try:
         return json.load(open(path_to_json, 'r'))
     except Exception as error:
         logging.warning(f'Can\'t load config: {path_to_json}. Error: {error}')
         return {}
+
 
 def resource_path(relative_path: str) -> str:
     """

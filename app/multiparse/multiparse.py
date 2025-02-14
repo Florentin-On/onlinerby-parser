@@ -53,26 +53,22 @@ class Multiparse(wx.Panel):
         self.product_category_combobox = wx.ComboBox(self, -1, name='product_category_combobox')
         left_sizer_line_1 = wx.BoxSizer(orient=wx.VERTICAL)
         left_sizer_line_1_1 = wx.BoxSizer(orient=wx.VERTICAL)
-        left_sizer_line_1.Add(self.highest_categories_label, flag=wx.LEFT | wx.ALIGN_CENTER,
-                              border=10)
-        left_sizer_line_1_1.Add(self.product_category_combobox, flag=wx.ALL | wx.EXPAND,
-                                border=5)
+        left_sizer_line_1.Add(self.highest_categories_label, flag=wx.ALIGN_CENTER | wx.UP, border=10)
+        left_sizer_line_1_1.Add(self.product_category_combobox, flag=wx.ALL | wx.EXPAND, border=5)
 
         left_sizer_line_2 = wx.BoxSizer(orient=wx.VERTICAL)
         left_sizer_line_2_1 = wx.BoxSizer(orient=wx.VERTICAL)
         self.categories_label = wx.StaticText(self, label='Категория')
         self.product_group_combobox = wx.ComboBox(self, -1, name='product_group_combobox')
         left_sizer_line_2.Add(self.categories_label, flag=wx.ALIGN_CENTER | wx.UP, border=10)
-        left_sizer_line_2_1.Add(self.product_group_combobox, flag=wx.ALL | wx.EXPAND,
-                                border=5)
+        left_sizer_line_2_1.Add(self.product_group_combobox, flag=wx.ALL | wx.EXPAND, border=5)
 
         left_sizer_line_3 = wx.BoxSizer(orient=wx.VERTICAL)
         left_sizer_line_3_1 = wx.BoxSizer(orient=wx.VERTICAL)
         self.sub_categories_label = wx.StaticText(self, label='Податегория')
         self.product_section_combobox = wx.ComboBox(self, -1, name='product_section_combobox')
         left_sizer_line_3.Add(self.sub_categories_label, flag=wx.ALIGN_CENTER | wx.UP, border=10)
-        left_sizer_line_3_1.Add(self.product_section_combobox, flag=wx.ALL | wx.EXPAND,
-                                border=5)
+        left_sizer_line_3_1.Add(self.product_section_combobox, flag=wx.ALL | wx.EXPAND, border=5)
 
         left_sizer_line_4 = wx.BoxSizer(orient=wx.VERTICAL)
         self.select_search_general_params_button = wx.Button(self, label='Задать основные параметры фильтра',
@@ -215,6 +211,7 @@ class Multiparse(wx.Panel):
         :param event: wx.Event
         """
         section = self.product_section_combobox.GetValue()
+
         filter_group_name = event.GetEventObject().GetName()
         if self.product_section_combobox.GetValue() != '':
             dlg = (
@@ -530,6 +527,14 @@ class Multiparse(wx.Panel):
                         elif main_header == 'Количество предложений':
                             ws.cell(column=id, row=row_id,
                                     value=product['prices']['offers']['count'] if product['prices'] else '-')
+                        elif main_header == 'Оценка и Количество отзывов':
+                            ws.cell(column=id, row=row_id,
+                                    value=f'{product["reviews"]["rating"] / 10} ({product["reviews"]["count"]})')
+                        elif main_header == 'Стикеры':
+                            stickers = product['stickers']
+                            sticker_names = [sticker['label'] for sticker in stickers] if stickers else []
+                            text = ', '.join(sticker_names) if sticker_names else '-'
+                            ws.cell(column=id, row=row_id, value=text)
                         id += 1
 
                 if not only_main_parameters:

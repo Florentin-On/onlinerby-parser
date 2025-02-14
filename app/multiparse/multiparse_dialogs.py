@@ -9,10 +9,8 @@ class TemplateMultiparseDialog(wx.Dialog):
 
     def __init__(self, parameters, group_name, controller):
         """Constructor"""
-
-        # DIALOG_NO_PARENT - to prevent been on top of the app
         wx.Dialog.__init__(self, parent=None, title='Выбрать параметры для фильтра',
-                           style=wx.CAPTION | wx.DIALOG_NO_PARENT)
+                           style=wx.CAPTION | wx.CLOSE)
 
         self.parameters = parameters
         self.current_panel_parameters = controller.filters_parameters
@@ -37,6 +35,13 @@ class TemplateMultiparseDialog(wx.Dialog):
         group_name_label = wx.StaticText(self, label=label)
         group_name_label.SetFont(create_font(small_heading_font))
         up_sizer.Add(group_name_label, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
+        full_section_path = (f'{self.controller.product_category_combobox.GetValue()} -> '
+                             f'{self.controller.product_group_combobox.GetValue()} -> '
+                             f'{self.controller.product_section_combobox.GetValue()}')
+        full_section_path_label = wx.StaticText(self, label=f'Категория: {full_section_path}',
+                                                style=wx.ALIGN_CENTRE_HORIZONTAL)
+        full_section_path_label.Wrap(300)
+        up_sizer.Add(full_section_path_label, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
         self.up_sizer_scroll = None
         self.main_parameters_scroll = None
         if self.group_name in ('general', 'additional'):
@@ -103,7 +108,7 @@ class TemplateMultiparseDialog(wx.Dialog):
 class ScrolledPanel(scrolled.ScrolledPanel):
     def __init__(self, parent, parameters, panel_parameters, group_name):
         if parameters:
-            scrolled.ScrolledPanel.__init__(self, parent, -1, size=(480, 480))
+            scrolled.ScrolledPanel.__init__(self, parent, -1, size=(550, 360))
             self.parameters = parameters
             self.group_name = group_name
             self.panel_parameters = panel_parameters
@@ -121,7 +126,7 @@ class ScrolledPanel(scrolled.ScrolledPanel):
             elif self.parameters:
                 self._show_product_scroll()
         else:
-            scrolled.ScrolledPanel.__init__(self, parent, -1, size=(480, 240))
+            scrolled.ScrolledPanel.__init__(self, parent, -1, size=(550, 260))
             self.panel_parameters = panel_parameters
             self.current_product_panel_parameters = {}
             self._show_main_parameters_scroll()
