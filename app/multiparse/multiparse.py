@@ -487,7 +487,7 @@ class Multiparse(wx.Panel):
             if i != 1:
                 proceeded_link = search_link
                 time.sleep(sleep)
-                proceeded_link += 'page=' + str(i)
+                proceeded_link += '&page=' + str(i)
                 current_page_products_dict = safe_get_requester(proceeded_link.lower(), {})
             ws = wb.active
             start_page_index = goods_amount % 30
